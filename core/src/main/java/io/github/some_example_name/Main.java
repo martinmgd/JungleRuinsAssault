@@ -1,32 +1,29 @@
 package io.github.some_example_name;
 
-import com.badlogic.gdx.ApplicationAdapter;
-import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.Game;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.utils.ScreenUtils;
+import io.github.some_example_name.pantallas.PantallaJuego;
+
 
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
-public class Main extends ApplicationAdapter {
-    private SpriteBatch batch;
-    private Texture image;
+/**
+ * Clase principal del juego. Gestiona el SpriteBatch y el cambio entre pantallas.
+ */
+public class Main extends Game {
+
+    /** SpriteBatch compartido por todas las pantallas. */
+    public SpriteBatch batch;
 
     @Override
     public void create() {
         batch = new SpriteBatch();
-        image = new Texture("libgdx.png");
-    }
-
-    @Override
-    public void render() {
-        ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
-        batch.begin();
-        batch.draw(image, 140, 210);
-        batch.end();
+        setScreen(new PantallaJuego(this));
     }
 
     @Override
     public void dispose() {
-        batch.dispose();
-        image.dispose();
+        super.dispose();
+        if (batch != null) batch.dispose();
     }
 }
+
