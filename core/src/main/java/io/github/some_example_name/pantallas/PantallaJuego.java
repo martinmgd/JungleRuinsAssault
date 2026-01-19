@@ -10,11 +10,9 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 
 import io.github.some_example_name.Main;
 import io.github.some_example_name.entidades.Jugador;
+import io.github.some_example_name.entidades.PlayerAnimations;
 import io.github.some_example_name.utilidades.Constantes;
 
-/**
- * Pantalla principal de juego: gestiona cámara, viewport, input (sondeo) y renderizado.
- */
 public class PantallaJuego extends ScreenAdapter {
 
     private final Main juego;
@@ -22,13 +20,15 @@ public class PantallaJuego extends ScreenAdapter {
     private OrthographicCamera camara;
     private Viewport viewport;
 
+    private PlayerAnimations anims;
     private Jugador jugador;
 
-    private float limiteIzquierdoCamara;
+    private float anchoNivel = 50f;
+    private float limiteIzq;
+    private float limiteDer;
 
-    private float limiteDerechoCamara;
-
-    private float anchoNivel;
+    // Pixels per world unit (ajusta si lo quieres más grande/pequeño)
+    private static final float PPU = 32f;
 
     public PantallaJuego(Main juego) {
         this.juego = juego;
@@ -40,76 +40,45 @@ public class PantallaJuego extends ScreenAdapter {
         viewport = new FitViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
         viewport.apply(true);
 
-        jugador = new Jugador();
+        anims = new PlayerAnimations();
+        jugador = new Jugador(anims);
 
-        anchoNivel = 50f;
+        limiteIzq = Constantes.ANCHO_MUNDO / 2f;
+        limiteDer = anchoNivel - Constantes.ANCHO_MUNDO / 2f;
 
-        // Límites para que la cámara no se salga del nivel
-        limiteIzquierdoCamara = Constantes.ANCHO_MUNDO / 2f;
-        limiteDerechoCamara = anchoNivel - Constantes.ANCHO_MUNDO / 2f;
-
-        Gdx.app.log("PantallaJuego", "show()");
-
-        camara.position.set(Constantes.ANCHO_MUNDO / 2f, Constantes.ALTO_MUNDO / 2f, 0f);
+        // Coloca cámara y jugador en sitio visible seguro
+        camara.position.set(Constantes.ANCHO_MUNDO / 2f, Constantes.ALTO_MUNDO / 2f, 0);
         camara.update();
+
+        jugador.setX(Constantes.ANCHO_MUNDO / 2f);
+
+        Gdx.app.log("PantallaJuego", "show OK");
     }
 
     @Override
     public void render(float delta) {
-        gestionarEntrada(delta);
+        float dir = 0f;
+        if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) dir -= 1f;
+        if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dir += 1f;
 
-        // Seguir al jugador (scroll lateral)
-        float objetivoX = jugador.sprite.getX() + jugador.sprite.getWidth() / 2f;
+        jugador.moverHorizontal(dir, delta);
 
-        // La cámara no puede ir más allá de los límites del “nivel”
-        camara.position.x = Math.max(limiteIzquierdoCamara, Math.min(objetivoX, limiteDerechoCamara));
+        float objetivoX = jugador.getX() + (PlayerAnimations.FRAME_W / PPU) / 2f;
+        camara.position.x = Math.max(limiteIzq, Math.min(objetivoX, limiteDer));
         camara.update();
 
-        ScreenUtils.clear(0f, 0f, 0f, 1f);
+        ScreenUtils.clear(0.1f, 0.1f, 0.1f, 1f); // gris para ver mejor
 
         viewport.apply();
         juego.batch.setProjectionMatrix(camara.combined);
 
         juego.batch.begin();
-        jugador.sprite.draw(juego.batch);
+        jugador.draw(juego.batch, PPU);
         juego.batch.end();
-    }
-
-    private void gestionarEntrada(float delta) {
-        float direccion = 0f;
-
-        // Teclado (Desktop)
-        if (Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) direccion -= 1f;
-        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D)) direccion += 1f;
-
-        // Táctil simple provisional (mitad izquierda / mitad derecha), como en los apuntes
-        if (Gdx.input.isTouched()) {
-            if (Gdx.input.getX() <= Gdx.graphics.getWidth() / 2f) direccion = -1f;
-            else direccion = 1f;
-        }
-
-        jugador.moverHorizontal(direccion, delta);
-        // Evitar que el jugador salga por la izquierda
-        if (jugador.sprite.getX() < 0f) {
-            jugador.sprite.setX(0f);
-        }
-
-        // Evitar que el jugador salga por la derecha
-        float maxX = anchoNivel - jugador.sprite.getWidth();
-        if (jugador.sprite.getX() > maxX) {
-            jugador.sprite.setX(maxX);
-        }
-    }
-
-    @Override
-    public void resize(int width, int height) {
-        viewport.update(width, height, true);
-        Gdx.app.log("PantallaJuego", "resize(" + width + "," + height + ")");
     }
 
     @Override
     public void dispose() {
-        jugador.dispose();
-        Gdx.app.log("PantallaJuego", "dispose()");
+        anims.dispose();
     }
 }

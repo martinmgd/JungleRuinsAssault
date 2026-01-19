@@ -1,36 +1,47 @@
 package io.github.some_example_name.entidades;
 
-import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.g2d.Sprite;
-import com.badlogic.gdx.utils.Disposable;
-import io.github.some_example_name.utilidades.Constantes;
+import com.badlogic.gdx.graphics.g2d.Animation;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 
-/**
- * Representa al jugador. Usa Sprite para mantener estado interno (posición, tamaño, etc.).
- */
-public class Jugador implements Disposable {
+public class Jugador {
 
-    private final Texture textura;
-    public final Sprite sprite;
+    public enum Estado { IDLE, WALK }
 
-    public Jugador() {
-        textura = new Texture("libgdx.png"); // placeholder temporal
-        sprite = new Sprite(textura);
-        sprite.setSize(Constantes.JUGADOR_ANCHO, Constantes.JUGADOR_ALTO);
-        sprite.setPosition(1f, 1f);
+    private final PlayerAnimations anims;
+
+    private Estado estado = Estado.IDLE;
+    private float stateTime = 0f;
+
+    // posición en unidades de mundo (las que uses en tu viewport)
+    private float x = 10f;
+    private float y = 2f;
+
+    private float velocidad = 6f;
+
+    public Jugador(PlayerAnimations anims) {
+        this.anims = anims;
     }
 
-    /**
-     * Mueve al jugador en el eje X usando delta time.
-     * @param direccion -1 izquierda, 0 quieto, +1 derecha
-     * @param delta tiempo transcurrido entre frames
-     */
-    public void moverHorizontal(float direccion, float delta) {
-        sprite.translateX(direccion * Constantes.JUGADOR_VELOCIDAD * delta);
+    public void moverHorizontal(float dir, float delta) {
+        x += dir * velocidad * delta;
+        estado = (dir != 0f) ? Estado.WALK : Estado.IDLE;
+        stateTime += delta;
     }
 
-    @Override
-    public void dispose() {
-        textura.dispose();
+    public void draw(SpriteBatch batch, float pixelsPerUnit) {
+        Animation<TextureRegion> anim = (estado == Estado.WALK) ? anims.walk : anims.idle;
+        TextureRegion frame = anim.getKeyFrame(stateTime);
+
+        // convertimos pixeles->unidades de mundo
+        float w = frame.getRegionWidth() / pixelsPerUnit;
+        float h = frame.getRegionHeight() / pixelsPerUnit;
+
+        batch.draw(frame, x, y, w, h);
     }
+
+    public float getX() { return x; }
+    public void setX(float x) { this.x = x; }
+
+    public float getWidth(float pixelsPerUnit) { return PlayerAnimations.FRAME_W / pixelsPerUnit; }
 }
