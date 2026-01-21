@@ -15,6 +15,12 @@ import io.github.some_example_name.utilidades.Constantes;
 
 public class PantallaJuego extends ScreenAdapter {
 
+    @Override
+    public void resize(int width, int height) {
+        viewport.update(width, height, true);
+    }
+    private com.badlogic.gdx.graphics.Texture texTest;
+
     private final Main juego;
 
     private OrthographicCamera camara;
@@ -38,10 +44,12 @@ public class PantallaJuego extends ScreenAdapter {
     public void show() {
         camara = new OrthographicCamera();
         viewport = new FitViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
-        viewport.apply(true);
+        viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
         anims = new PlayerAnimations();
         jugador = new Jugador(anims);
+
+        texTest = new com.badlogic.gdx.graphics.Texture("libgdx.png");
 
         limiteIzq = Constantes.ANCHO_MUNDO / 2f;
         limiteDer = anchoNivel - Constantes.ANCHO_MUNDO / 2f;
@@ -53,6 +61,11 @@ public class PantallaJuego extends ScreenAdapter {
         jugador.setX(Constantes.ANCHO_MUNDO / 2f);
 
         Gdx.app.log("PantallaJuego", "show OK");
+
+        Gdx.app.log("ASSETS_TEST", "libgdx.png exists=" + Gdx.files.internal("libgdx.png").exists());
+        Gdx.app.log("ASSETS_TEST", "idle_sheet exists=" + Gdx.files.internal("sprites/player/idle_sheet.png").exists());
+        Gdx.app.log("ASSETS_TEST", "walk_sheet exists=" + Gdx.files.internal("sprites/player/walk_sheet.png").exists());
+
     }
 
     @Override
@@ -63,22 +76,26 @@ public class PantallaJuego extends ScreenAdapter {
 
         jugador.moverHorizontal(dir, delta);
 
+        ScreenUtils.clear(1f, 0f, 0f, 1f); // Fondo rojo para confirmar que render se ejecuta
+
+        viewport.apply();
+
         float objetivoX = jugador.getX() + (PlayerAnimations.FRAME_W / PPU) / 2f;
         camara.position.x = Math.max(limiteIzq, Math.min(objetivoX, limiteDer));
         camara.update();
 
-        ScreenUtils.clear(0.1f, 0.1f, 0.1f, 1f); // gris para ver mejor
-
-        viewport.apply();
         juego.batch.setProjectionMatrix(camara.combined);
 
         juego.batch.begin();
+        juego.batch.draw(texTest, 1f, 1f, 2f, 2f);
         jugador.draw(juego.batch, PPU);
         juego.batch.end();
     }
 
+
     @Override
     public void dispose() {
         anims.dispose();
+        if (texTest != null) texTest.dispose();
     }
 }

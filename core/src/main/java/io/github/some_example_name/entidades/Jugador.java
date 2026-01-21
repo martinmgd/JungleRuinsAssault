@@ -6,6 +6,8 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 
 public class Jugador {
 
+    private boolean mirandoDerecha = true;
+
     public enum Estado { IDLE, WALK }
 
     private final PlayerAnimations anims;
@@ -17,7 +19,7 @@ public class Jugador {
     private float x = 10f;
     private float y = 2f;
 
-    private float velocidad = 6f;
+    private float velocidad = 20f;
 
     public Jugador(PlayerAnimations anims) {
         this.anims = anims;
@@ -26,12 +28,21 @@ public class Jugador {
     public void moverHorizontal(float dir, float delta) {
         x += dir * velocidad * delta;
         estado = (dir != 0f) ? Estado.WALK : Estado.IDLE;
+        if (dir > 0f) mirandoDerecha = true;
+        else if (dir < 0f) mirandoDerecha = false;
+
         stateTime += delta;
     }
 
     public void draw(SpriteBatch batch, float pixelsPerUnit) {
         Animation<TextureRegion> anim = (estado == Estado.WALK) ? anims.walk : anims.idle;
         TextureRegion frame = anim.getKeyFrame(stateTime);
+
+        boolean frameMirandoDerecha = !frame.isFlipX();
+        if (mirandoDerecha != frameMirandoDerecha) {
+            frame.flip(true, false);
+        }
+
 
         // convertimos pixeles->unidades de mundo
         float w = frame.getRegionWidth() / pixelsPerUnit;
