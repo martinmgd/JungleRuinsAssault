@@ -19,7 +19,7 @@ public class Jugador {
     private float x = 10f;
     private float y = 2f;
 
-    private float velocidad = 20f;
+    private float velocidad = 12f;
 
     public Jugador(PlayerAnimations anims) {
         this.anims = anims;
@@ -27,7 +27,9 @@ public class Jugador {
 
     public void moverHorizontal(float dir, float delta) {
         x += dir * velocidad * delta;
+
         estado = (dir != 0f) ? Estado.WALK : Estado.IDLE;
+
         if (dir > 0f) mirandoDerecha = true;
         else if (dir < 0f) mirandoDerecha = false;
 
@@ -38,21 +40,31 @@ public class Jugador {
         Animation<TextureRegion> anim = (estado == Estado.WALK) ? anims.walk : anims.idle;
         TextureRegion frame = anim.getKeyFrame(stateTime);
 
-        boolean frameMirandoDerecha = !frame.isFlipX();
-        if (mirandoDerecha != frameMirandoDerecha) {
-            frame.flip(true, false);
-        }
-
-
-        // convertimos pixeles->unidades de mundo
+        // IMPORTANTE:
+        // No flipes el TextureRegion original (se reutiliza). Dibuja con ancho negativo.
         float w = frame.getRegionWidth() / pixelsPerUnit;
         float h = frame.getRegionHeight() / pixelsPerUnit;
 
-        batch.draw(frame, x, y, w, h);
+        if (mirandoDerecha) {
+            batch.draw(frame, x, y, w, h);
+        } else {
+            // Dibuja "espejado": ancho negativo y desplaza X para que el pie no cambie
+            batch.draw(frame, x + w, y, -w, h);
+        }
     }
 
+    // --- getters / setters de posición ---
     public float getX() { return x; }
     public void setX(float x) { this.x = x; }
 
-    public float getWidth(float pixelsPerUnit) { return PlayerAnimations.FRAME_W / pixelsPerUnit; }
+    public float getY() { return y; }
+    public void setY(float y) { this.y = y; }
+
+    public float getWidth(float pixelsPerUnit) {
+        return PlayerAnimations.FRAME_W / pixelsPerUnit;
+    }
+
+    public float getHeight(float pixelsPerUnit) {
+        return PlayerAnimations.FRAME_H / pixelsPerUnit;
+    }
 }
