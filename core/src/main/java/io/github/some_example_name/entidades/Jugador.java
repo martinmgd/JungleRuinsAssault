@@ -19,7 +19,7 @@ public class Jugador {
     private float x = 10f;
     private float y = 2f;
 
-    private float velocidadX = 12f;
+    private float velocidadX = 4f;
 
     // Física vertical
     private float velY = 0f;
@@ -33,13 +33,12 @@ public class Jugador {
     private float tiempoDerrape = 0f;
     private int dirDerrape = 0;
 
-    private static final float DURACION_DERRAPE = 0.18f;
-    private static final float MULT_VELOCIDAD_DERRAPE = 0.35f;
+    // Derrape muy corto para no dar sensación de "patinaje"
+    private static final float DURACION_DERRAPE = 0.10f;
+    private static final float MULT_VELOCIDAD_DERRAPE = 0.25f;
 
-    // Cima del salto (mantiene el frame central un instante)
-    private boolean enCima = false;
-    private float tiempoCima = 0f;
-    private static final float DURACION_CIMA = 0.10f;
+    // Bloqueo de movimiento mientras siga agachado tras derrapar
+    private boolean bloqueoMovimientoAgachado = false;
 
     public Jugador(PlayerAnimations anims) {
         this.anims = anims;
@@ -52,8 +51,6 @@ public class Jugador {
             y = sueloY;
             velY = 0f;
             enSuelo = true;
-            enCima = false;
-            tiempoCima = 0f;
         }
     }
 
@@ -61,6 +58,11 @@ public class Jugador {
 
         // Tiempo de animación
         stateTime += delta;
+
+        // Si se deja de agachar, se permite moverse normalmente
+        if (!agacharse) {
+            bloqueoMovimientoAgachado = false;
+        }
 
         // Orientación
         if (dir > 0f) mirandoDerecha = true;
@@ -70,74 +72,81 @@ public class Jugador {
         if (saltar && enSuelo) {
             velY = VEL_SALTO;
             enSuelo = false;
-            enCima = false;
-            tiempoCima = 0f;
+            setEstado(Estado.JUMP);
         }
 
         // Movimiento horizontal
         if (agacharse && enSuelo) {
 
-            // Si se inicia dirección estando agachado, se aplica un derrape corto
-            if (tiempoDerrape <= 0f && dir != 0f) {
-                tiempoDerrape = DURACION_DERRAPE;
-                dirDerrape = (dir > 0f) ? 1 : -1;
-            }
+            // Si aún no está bloqueado, permitimos iniciar un derrape corto
+            if (!bloqueoMovimientoAgachado) {
 
-            // Mientras dure el derrape, se mueve un poco y luego se detiene
-            if (tiempoDerrape > 0f) {
-                x += dirDerrape * velocidadX * MULT_VELOCIDAD_DERRAPE * delta;
-                tiempoDerrape -= delta;
+                if (tiempoDerrape <= 0f && dir != 0f) {
+                    tiempoDerrape = DURACION_DERRAPE;
+                    dirDerrape = (dir > 0f) ? 1 : -1;
+                }
+
+                // Mientras dure el derrape, se mueve un poco
+                if (tiempoDerrape > 0f) {
+                    x += dirDerrape * velocidadX * MULT_VELOCIDAD_DERRAPE * delta;
+                    tiempoDerrape -= delta;
+
+                    // Al terminar el derrape, se bloquea el movimiento hasta que deje de agacharse
+                    if (tiempoDerrape <= 0f) {
+                        bloqueoMovimientoAgachado = true;
+                        tiempoDerrape = 0f;
+                        dirDerrape = 0;
+                    }
+                } else {
+                    // Agachado sin derrape: quieto
+                }
+
+            } else {
+                // Agachado y bloqueado: no se mueve
             }
 
         } else {
-            // Movimiento normal
+            // Movimiento normal (de pie o en el aire)
             x += dir * velocidadX * delta;
 
-            // Al salir de agachado se reinicia el derrape
+            // Reinicio de derrape al estar fuera del estado agachado
             tiempoDerrape = 0f;
             dirDerrape = 0;
         }
 
         // Física vertical
         if (!enSuelo) {
-            float velYAnterior = velY;
-
             velY += GRAVEDAD * delta;
             y += velY * delta;
 
-            // Detectar punto más alto: al pasar de positivo a cero/negativo
-            if (!enCima && velYAnterior > 0f && velY <= 0f) {
-                enCima = true;
-                tiempoCima = DURACION_CIMA;
-            }
-
-            // Aterrizaje
             if (y <= sueloY) {
                 y = sueloY;
                 velY = 0f;
                 enSuelo = true;
-                enCima = false;
-                tiempoCima = 0f;
             }
         }
 
         // Selección de estado
         if (!enSuelo) {
             setEstado(Estado.JUMP);
+
         } else if (agacharse) {
             setEstado(Estado.CROUCH);
+
         } else if (dir != 0f) {
             setEstado(Estado.WALK);
+
         } else {
             setEstado(Estado.IDLE);
         }
 
-        // Temporizador de cima (solo mientras está en el aire)
-        if (estado == Estado.JUMP && enCima) {
-            tiempoCima -= delta;
-            if (tiempoCima <= 0f) {
-                enCima = false;
-                tiempoCima = 0f;
+        // El salto no hace loop: cuando termina la animación y ya está en el suelo,
+        // vuelve al estado correcto.
+        if (estado == Estado.JUMP && enSuelo) {
+            if (anims.jump.isAnimationFinished(stateTime)) {
+                if (agacharse) setEstado(Estado.CROUCH);
+                else if (dir != 0f) setEstado(Estado.WALK);
+                else setEstado(Estado.IDLE);
             }
         }
     }
@@ -171,9 +180,7 @@ public class Jugador {
             case CROUCH:
                 return anims.crouch;
             case JUMP:
-                if (enCima) return anims.jumpTop;
-                if (velY > 0f) return anims.jumpUp;
-                return anims.jumpDown;
+                return anims.jump;
             case IDLE:
             default:
                 return anims.idle;
@@ -192,5 +199,22 @@ public class Jugador {
 
     public float getHeight(float pixelsPerUnit) {
         return PlayerAnimations.FRAME_H / pixelsPerUnit;
+    }
+
+    // ✅ AÑADIDO: dirección para disparar a izquierda/derecha
+    public boolean isMirandoDerecha() {
+        return mirandoDerecha;
+    }
+
+    // ✅ AÑADIDO: punto de salida del disparo (aprox a la altura del arma)
+    // Ajusta estos multiplicadores si quieres afinar:
+    public float getMuzzleX(float pixelsPerUnit) {
+        float w = getWidth(pixelsPerUnit);
+        return mirandoDerecha ? (x + w * 0.85f) : (x + w * 0.15f);
+    }
+
+    public float getMuzzleY(float pixelsPerUnit) {
+        float h = getHeight(pixelsPerUnit);
+        return y + h * 0.62f;
     }
 }

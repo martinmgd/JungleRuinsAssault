@@ -15,32 +15,28 @@ public class PlayerAnimations {
 
     private static final String IDLE_SHEET = "sprites/player/idle/idle_sheet.png";
     private static final String WALK_SHEET = "sprites/player/walk/walk_sheet.png";
-
     private static final String CROUCH_SHEET = "sprites/player/crouch/crouch_sheet.png";
 
-    private static final String JUMP_UP_SHEET   = "sprites/player/jump/jump_sheet_1.png";
-    private static final String JUMP_TOP_SHEET  = "sprites/player/jump/jump_sheet_2.png";
-    private static final String JUMP_DOWN_SHEET = "sprites/player/jump/jump_sheet_3.png";
+    // Salto unificado (15 frames en un único spritesheet)
+    private static final String JUMP_SHEET = "sprites/player/jump/jump_sheet.png";
 
     private static final String DEAD_1_SHEET = "sprites/player/dead/dead_sheet_1.png";
     private static final String DEAD_2_SHEET = "sprites/player/dead/dead_sheet_2.png";
     private static final String DEAD_3_SHEET = "sprites/player/dead/dead_sheet_3.png";
 
     private static final float IDLE_FRAME_TIME = 0.25f;
-    private static final float WALK_FRAME_TIME = 0.08f;
-
+    private static final float WALK_FRAME_TIME = 0.06f;
     private static final float CROUCH_FRAME_TIME = 0.20f;
-    private static final float JUMP_FRAME_TIME = 0.06f;
+
+    // El salto suele quedar más natural algo rápido
+    private static final float JUMP_FRAME_TIME = 0.05f;
+
     private static final float DEAD_FRAME_TIME = 0.07f;
 
     private final Texture idleTex;
     private final Texture walkTex;
-
     private final Texture crouchTex;
-
-    private final Texture jumpUpTex;
-    private final Texture jumpTopTex;
-    private final Texture jumpDownTex;
+    private final Texture jumpTex;
 
     private final Texture dead1Tex;
     private final Texture dead2Tex;
@@ -48,12 +44,9 @@ public class PlayerAnimations {
 
     public final Animation<TextureRegion> idle;
     public final Animation<TextureRegion> walk;
-
     public final Animation<TextureRegion> crouch;
 
-    public final Animation<TextureRegion> jumpUp;
-    public final Animation<TextureRegion> jumpTop;
-    public final Animation<TextureRegion> jumpDown;
+    public final Animation<TextureRegion> jump;
 
     public final Animation<TextureRegion> dead1;
     public final Animation<TextureRegion> dead2;
@@ -62,12 +55,9 @@ public class PlayerAnimations {
     public PlayerAnimations() {
         idleTex = loadTexMust(IDLE_SHEET);
         walkTex = loadTexMust(WALK_SHEET);
-
         crouchTex = loadTexMust(CROUCH_SHEET);
 
-        jumpUpTex = loadTexMust(JUMP_UP_SHEET);
-        jumpTopTex = loadTexMust(JUMP_TOP_SHEET);
-        jumpDownTex = loadTexMust(JUMP_DOWN_SHEET);
+        jumpTex = loadTexMust(JUMP_SHEET);
 
         dead1Tex = loadTexMust(DEAD_1_SHEET);
         dead2Tex = loadTexMust(DEAD_2_SHEET);
@@ -75,13 +65,10 @@ public class PlayerAnimations {
 
         idle = buildRowAnimation(idleTex, IDLE_FRAME_TIME, true);
         walk = buildRowAnimation(walkTex, WALK_FRAME_TIME, true);
-
         crouch = buildRowAnimation(crouchTex, CROUCH_FRAME_TIME, true);
 
-        // El salto se selecciona según la velocidad vertical
-        jumpUp = buildRowAnimation(jumpUpTex, JUMP_FRAME_TIME, true);
-        jumpTop = buildRowAnimation(jumpTopTex, JUMP_FRAME_TIME, true);
-        jumpDown = buildRowAnimation(jumpDownTex, JUMP_FRAME_TIME, true);
+        // El salto no debe repetirse automáticamente
+        jump = buildRowAnimation(jumpTex, JUMP_FRAME_TIME, false);
 
         // Muerte preparada (se decidirá el flujo exacto más adelante)
         dead1 = buildRowAnimation(dead1Tex, DEAD_FRAME_TIME, true);
@@ -129,12 +116,8 @@ public class PlayerAnimations {
     public void dispose() {
         idleTex.dispose();
         walkTex.dispose();
-
         crouchTex.dispose();
-
-        jumpUpTex.dispose();
-        jumpTopTex.dispose();
-        jumpDownTex.dispose();
+        jumpTex.dispose();
 
         dead1Tex.dispose();
         dead2Tex.dispose();

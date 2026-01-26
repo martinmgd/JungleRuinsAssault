@@ -4,7 +4,6 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.OrthographicCamera;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
@@ -12,8 +11,10 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import io.github.some_example_name.Main;
 import io.github.some_example_name.entidades.Jugador;
 import io.github.some_example_name.entidades.PlayerAnimations;
+import io.github.some_example_name.entidades.GestorProyectiles;
 import io.github.some_example_name.utilidades.Constantes;
 import io.github.some_example_name.utilidades.ParallaxBackground;
+import io.github.some_example_name.utilidades.DisparoAssets;
 
 public class PantallaJuego extends ScreenAdapter {
 
@@ -33,6 +34,9 @@ public class PantallaJuego extends ScreenAdapter {
 
     private ParallaxBackground parallax;
 
+    private DisparoAssets disparoAssets;
+    private GestorProyectiles gestorProyectiles;
+
     public PantallaJuego(Main juego) {
         this.juego = juego;
     }
@@ -46,7 +50,6 @@ public class PantallaJuego extends ScreenAdapter {
         anims = new PlayerAnimations();
         jugador = new Jugador(anims);
 
-        // Fondo con efecto parallax (fondo, capa intermedia y capa de acción)
         parallax = new ParallaxBackground(
             "sprites/fondos/CapaFondo.png",
             "sprites/fondos/CapaIntermedia3.png",
@@ -54,7 +57,9 @@ public class PantallaJuego extends ScreenAdapter {
         );
         parallax.resize(viewport.getWorldWidth(), viewport.getWorldHeight());
 
-        // Límites de cámara según el ancho visible real del viewport
+        disparoAssets = new DisparoAssets();
+        gestorProyectiles = new GestorProyectiles(disparoAssets);
+
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
@@ -64,7 +69,6 @@ public class PantallaJuego extends ScreenAdapter {
 
         jugador.setX(viewW / 2f);
 
-        // Colocar jugador sobre el suelo calculado por el parallax
         jugador.setSueloY(parallax.getGroundY());
         jugador.setY(parallax.getGroundY());
 
@@ -98,30 +102,13 @@ public class PantallaJuego extends ScreenAdapter {
         boolean agacharse = Gdx.input.isKeyPressed(Input.Keys.S)
             || Gdx.input.isKeyPressed(Input.Keys.DOWN);
 
-        // Actualizar suelo (puede variar si se ajusta groundFrac)
         jugador.setSueloY(parallax.getGroundY());
-
-        // Ajuste fino de la altura del suelo durante el desarrollo.
-        // Permite modificar la posición vertical del camino de la capa de acción
-        // para alinear correctamente al jugador con el escenario.
-//    if (Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
-//        parallax.setGroundFrac(parallax.getGroundFrac() + 0.01f);
-//        Gdx.app.log("GROUND", "groundFrac=" + parallax.getGroundFrac());
-//    }
-//
-//    if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
-//        parallax.setGroundFrac(parallax.getGroundFrac() - 0.01f);
-//        Gdx.app.log("GROUND", "groundFrac=" + parallax.getGroundFrac());
-//    }
-
-        // Movimiento, salto y agacharse
         jugador.aplicarEntrada(dir, saltar, agacharse, delta);
 
         ScreenUtils.clear(0f, 0f, 0f, 1f);
 
         viewport.apply();
 
-        // Cámara sigue al jugador
         float objetivoX = jugador.getX() + (PlayerAnimations.FRAME_W / PPU) / 2f;
         camara.position.x = Math.max(limiteIzq, Math.min(objetivoX, limiteDer));
         camara.update();
@@ -129,13 +116,44 @@ public class PantallaJuego extends ScreenAdapter {
         juego.batch.setProjectionMatrix(camara.combined);
 
         float cameraLeftX = camara.position.x - viewport.getWorldWidth() / 2f;
+        float viewW = viewport.getWorldWidth();
+
+        // Disparo normal
+        if (Gdx.input.isKeyJustPressed(Input.Keys.J)) {
+            boolean derecha = jugador.isMirandoDerecha();
+            float sx = jugador.getMuzzleX(PPU);
+            float sy = jugador.getMuzzleY(PPU) - jugador.getHeight(PPU) * 0.10f;
+
+            gestorProyectiles.shootNormal(sx, sy, derecha);
+        }
+
+        // Disparo especial (corriente hasta el borde y termina)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.K)) {
+            boolean derecha = jugador.isMirandoDerecha();
+            float sx = jugador.getMuzzleX(PPU);
+
+            float sy = jugador.getMuzzleY(PPU) - jugador.getHeight(PPU) * 0.40f;
+
+            gestorProyectiles.shootEspecial(sx, sy, derecha, cameraLeftX, viewW);
+        }
+
+        // Si el especial está activo, su origen sigue al arma
+        if (gestorProyectiles.isEspecialActivo()) {
+            boolean derecha = jugador.isMirandoDerecha();
+            float sx = jugador.getMuzzleX(PPU);
+            float sy = jugador.getMuzzleY(PPU) - jugador.getHeight(PPU) * 0.40f;
+
+            gestorProyectiles.setEspecialOrigin(sx, sy, derecha);
+        }
+
+        gestorProyectiles.update(delta, cameraLeftX, viewW);
 
         juego.batch.begin();
 
-        // Fondo parallax
-        parallax.render(juego.batch, cameraLeftX, viewport.getWorldWidth());
+        parallax.render(juego.batch, cameraLeftX, viewW);
 
-        // Jugador
+        gestorProyectiles.draw(juego.batch, cameraLeftX, viewW);
+
         jugador.draw(juego.batch, PPU);
 
         juego.batch.end();
@@ -145,5 +163,6 @@ public class PantallaJuego extends ScreenAdapter {
     public void dispose() {
         if (anims != null) anims.dispose();
         if (parallax != null) parallax.dispose();
+        if (disparoAssets != null) disparoAssets.dispose();
     }
 }
