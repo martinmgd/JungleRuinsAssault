@@ -9,12 +9,12 @@ import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
 import io.github.some_example_name.Main;
+import io.github.some_example_name.entidades.GestorProyectiles;
 import io.github.some_example_name.entidades.Jugador;
 import io.github.some_example_name.entidades.PlayerAnimations;
-import io.github.some_example_name.entidades.GestorProyectiles;
 import io.github.some_example_name.utilidades.Constantes;
-import io.github.some_example_name.utilidades.ParallaxBackground;
 import io.github.some_example_name.utilidades.DisparoAssets;
+import io.github.some_example_name.utilidades.ParallaxBackground;
 
 public class PantallaJuego extends ScreenAdapter {
 
@@ -71,8 +71,6 @@ public class PantallaJuego extends ScreenAdapter {
 
         jugador.setSueloY(parallax.getGroundY());
         jugador.setY(parallax.getGroundY());
-
-        Gdx.app.log("PantallaJuego", "show OK");
     }
 
     @Override
@@ -118,32 +116,37 @@ public class PantallaJuego extends ScreenAdapter {
         float cameraLeftX = camara.position.x - viewport.getWorldWidth() / 2f;
         float viewW = viewport.getWorldWidth();
 
-        // Disparo normal
+        // Disparo normal (tap)
         if (Gdx.input.isKeyJustPressed(Input.Keys.J)) {
             boolean derecha = jugador.isMirandoDerecha();
             float sx = jugador.getMuzzleX(PPU);
             float sy = jugador.getMuzzleY(PPU) - jugador.getHeight(PPU) * 0.10f;
-
             gestorProyectiles.shootNormal(sx, sy, derecha);
         }
 
-        // Disparo especial (corriente hasta el borde y termina)
-        if (Gdx.input.isKeyJustPressed(Input.Keys.K)) {
+        // Disparo especial (mantener)
+        boolean keyEspecial = Gdx.input.isKeyPressed(Input.Keys.K);
+        boolean keyEspecialDown = Gdx.input.isKeyJustPressed(Input.Keys.K);
+
+        if (keyEspecialDown) {
             boolean derecha = jugador.isMirandoDerecha();
             float sx = jugador.getMuzzleX(PPU);
-
             float sy = jugador.getMuzzleY(PPU) - jugador.getHeight(PPU) * 0.40f;
-
-            gestorProyectiles.shootEspecial(sx, sy, derecha, cameraLeftX, viewW);
+            gestorProyectiles.startEspecial(sx, sy, derecha);
         }
 
-        // Si el especial está activo, su origen sigue al arma
+        // Si está activo, su origen sigue al arma y el "holding" depende de si sigues pulsando
         if (gestorProyectiles.isEspecialActivo()) {
             boolean derecha = jugador.isMirandoDerecha();
             float sx = jugador.getMuzzleX(PPU);
             float sy = jugador.getMuzzleY(PPU) - jugador.getHeight(PPU) * 0.40f;
 
             gestorProyectiles.setEspecialOrigin(sx, sy, derecha);
+            gestorProyectiles.setEspecialHolding(keyEspecial);
+
+            if (!keyEspecial) {
+                gestorProyectiles.stopEspecial();
+            }
         }
 
         gestorProyectiles.update(delta, cameraLeftX, viewW);
@@ -151,9 +154,7 @@ public class PantallaJuego extends ScreenAdapter {
         juego.batch.begin();
 
         parallax.render(juego.batch, cameraLeftX, viewW);
-
         gestorProyectiles.draw(juego.batch, cameraLeftX, viewW);
-
         jugador.draw(juego.batch, PPU);
 
         juego.batch.end();

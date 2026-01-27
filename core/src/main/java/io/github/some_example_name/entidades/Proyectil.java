@@ -6,12 +6,10 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 
 public class Proyectil {
 
-    public enum Tipo { NORMAL }
-
     private final Animation<TextureRegion> anim;
 
     private float x, y;
-    private float vx; // solo X
+    private float vx;
     private float stateTime = 0f;
 
     private final boolean haciaDerecha;

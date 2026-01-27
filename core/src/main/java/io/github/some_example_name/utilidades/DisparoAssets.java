@@ -7,41 +7,50 @@ import com.badlogic.gdx.utils.Disposable;
 
 public class DisparoAssets implements Disposable {
 
-    public static final String PATH_NORMAL_SHEET  = "sprites/projectiles/fireball_sheet.png";
-    public static final String PATH_SPECIAL_SHEET = "sprites/projectiles/special_sheet.png";
-
+    // Normal (3 frames en una sola fila)
+    public static final String PATH_NORMAL_SHEET = "sprites/projectiles/fireball_sheet.png";
     public static final int NORMAL_FRAMES = 3;
-    public static final int SPECIAL_FRAMES_TOTAL = 5;
-
     public static final float NORMAL_FRAME_TIME = 0.06f;
+
+    // Especial: start_sheet (3 frames), body (1 frame), end_sheet (3 frames)
+    public static final String PATH_SPECIAL_START_SHEET = "sprites/projectiles/special_start_sheet.png";
+    public static final String PATH_SPECIAL_BODY = "sprites/projectiles/special_body.png";
+    public static final String PATH_SPECIAL_END_SHEET = "sprites/projectiles/special_end_sheet.png";
+
+    public static final int SPECIAL_START_FRAMES = 3;
+    public static final int SPECIAL_END_FRAMES = 3;
+
     public static final float SPECIAL_START_FRAME_TIME = 0.05f;
+    public static final float SPECIAL_END_FRAME_TIME = 0.05f;
 
     private final Texture normalTex;
-    private final Texture specialTex;
+    private final Texture specialStartTex;
+    private final Texture specialBodyTex;
+    private final Texture specialEndTex;
 
     public final Animation<TextureRegion> normalAnim;
-    public final Animation<TextureRegion> specialStartAnim; // frames 1-4 (no loop)
 
-    // Frame 5 (antes “fly”, ahora “segmento del chorro”)
-    public final TextureRegion specialFlyRegion;
-    public final TextureRegion specialStreamRegion; // alias más claro
+    public final Animation<TextureRegion> specialStartAnim; // no loop
+    public final TextureRegion specialBodyRegion;           // 1 frame
+    public final Animation<TextureRegion> specialEndAnim;   // no loop
 
     public DisparoAssets() {
         normalTex = new Texture(PATH_NORMAL_SHEET);
-        specialTex = new Texture(PATH_SPECIAL_SHEET);
+        specialStartTex = new Texture(PATH_SPECIAL_START_SHEET);
+        specialBodyTex = new Texture(PATH_SPECIAL_BODY);
+        specialEndTex = new Texture(PATH_SPECIAL_END_SHEET);
 
         normalAnim = buildAnimFromSheet(normalTex, NORMAL_FRAMES, NORMAL_FRAME_TIME, Animation.PlayMode.LOOP);
 
-        TextureRegion[] specialFrames = splitSheetHorizontal(specialTex, SPECIAL_FRAMES_TOTAL);
-
-        TextureRegion[] start = new TextureRegion[4];
-        System.arraycopy(specialFrames, 0, start, 0, 4);
-
-        specialStartAnim = new Animation<>(SPECIAL_START_FRAME_TIME, start);
+        TextureRegion[] startFrames = splitSheetHorizontal(specialStartTex, SPECIAL_START_FRAMES);
+        specialStartAnim = new Animation<>(SPECIAL_START_FRAME_TIME, startFrames);
         specialStartAnim.setPlayMode(Animation.PlayMode.NORMAL);
 
-        specialFlyRegion = specialFrames[4];
-        specialStreamRegion = specialFlyRegion;
+        specialBodyRegion = new TextureRegion(specialBodyTex);
+
+        TextureRegion[] endFrames = splitSheetHorizontal(specialEndTex, SPECIAL_END_FRAMES);
+        specialEndAnim = new Animation<>(SPECIAL_END_FRAME_TIME, endFrames);
+        specialEndAnim.setPlayMode(Animation.PlayMode.NORMAL);
     }
 
     private Animation<TextureRegion> buildAnimFromSheet(Texture sheet, int frames, float frameTime, Animation.PlayMode mode) {
@@ -65,6 +74,8 @@ public class DisparoAssets implements Disposable {
     @Override
     public void dispose() {
         normalTex.dispose();
-        specialTex.dispose();
+        specialStartTex.dispose();
+        specialBodyTex.dispose();
+        specialEndTex.dispose();
     }
 }
