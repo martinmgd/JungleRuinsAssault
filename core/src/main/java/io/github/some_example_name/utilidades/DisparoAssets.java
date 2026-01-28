@@ -13,9 +13,9 @@ public class DisparoAssets implements Disposable {
     public static final float NORMAL_FRAME_TIME = 0.06f;
 
     // Especial: start_sheet (3 frames), body (1 frame), end_sheet (3 frames)
-    public static final String PATH_SPECIAL_START_SHEET = "sprites/projectiles/special_start_sheet.png";
-    public static final String PATH_SPECIAL_BODY = "sprites/projectiles/special_body.png";
-    public static final String PATH_SPECIAL_END_SHEET = "sprites/projectiles/special_end_sheet.png";
+    public static final String PATH_SPECIAL_START_SHEET = "sprites/projectiles/special/special_start_sheet.png";
+    public static final String PATH_SPECIAL_BODY = "sprites/projectiles/special/special_body.png";
+    public static final String PATH_SPECIAL_END_SHEET = "sprites/projectiles/special/special_end.png";
 
     public static final int SPECIAL_START_FRAMES = 3;
     public static final int SPECIAL_END_FRAMES = 3;

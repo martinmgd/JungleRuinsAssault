@@ -16,31 +16,24 @@ public class ChorroEspecial {
 
     private float stateTime = 0f;
 
-    // Origen (se actualiza desde PantallaJuego mientras esté activo)
     private float ox, oy;
     private boolean derecha = true;
 
-    // Crecimiento del chorro
     private float bodyLen = 0f;
 
-    // Ajustes visuales
-    private float startW = 2.8f;
-    private float startH = 2.8f;
+    private float beamH = 6.0f;
+    private float startH = 0f;
+    private float startW = 0f;
 
-    private float bodyH = 6.0f;     // ajusta para que ocupe 50%-70% del alto, combinado con zoom/viewport
-    private float endW = 4.8f;
-    private float endH = 4.8f;
+    private float endH = 0f;
+    private float endW = 0f;
 
-    // Velocidad de crecimiento (unidades mundo por segundo)
-    private float growSpeed = 70f;
+    private float tileW = 1.2f;
 
-    // Cuando llega al borde, termina (puede explotar y desaparecer)
-    private boolean finishWhenHitEdge = true;
+    private float growSpeed = 50f;
 
-    // Bajar el chorro respecto al arma (tu pedido: 0.2f aprox)
     private float yOffset = -0.2f;
 
-    // Control: si el jugador sigue manteniendo
     private boolean holding = true;
 
     public ChorroEspecial(Animation<TextureRegion> startAnim,
@@ -53,6 +46,8 @@ public class ChorroEspecial {
         this.ox = ox;
         this.oy = oy;
         this.derecha = derecha;
+
+        recomputeSizes();
     }
 
     public void setOrigin(float x, float y, boolean derecha) {
@@ -64,7 +59,6 @@ public class ChorroEspecial {
     public void setHolding(boolean holding) {
         this.holding = holding;
         if (!holding && estado != Estado.END && estado != Estado.FIN) {
-            // si suelta, forzamos final
             estado = Estado.END;
             stateTime = 0f;
         }
@@ -75,120 +69,110 @@ public class ChorroEspecial {
     }
 
     public void update(float delta, float camLeftX, float viewW) {
+        if (estado == Estado.FIN) return;
+
         stateTime += delta;
 
-        float viewRightX = camLeftX + viewW;
-
-        switch (estado) {
-            case START: {
-                if (startAnim.isAnimationFinished(stateTime)) {
-                    estado = Estado.BODY;
-                    stateTime = 0f;
-                    bodyLen = 0f;
-                }
-                break;
-            }
-
-            case BODY: {
-                // crece muy rápido hasta el borde visible
-                bodyLen += growSpeed * delta;
-
-                float maxLen = computeMaxLenToScreenEdge(camLeftX, viewW, viewRightX);
-
-                if (bodyLen >= maxLen) {
-                    bodyLen = maxLen;
-
-                    if (finishWhenHitEdge) {
-                        estado = Estado.END;
-                        stateTime = 0f;
-                    } else if (!holding) {
-                        estado = Estado.END;
-                        stateTime = 0f;
-                    }
-                } else {
-                    if (!holding) {
-                        estado = Estado.END;
-                        stateTime = 0f;
-                    }
-                }
-                break;
-            }
-
-            case END: {
-                if (endAnim.isAnimationFinished(stateTime)) {
-                    estado = Estado.FIN;
-                }
-                break;
-            }
-
-            case FIN:
-            default:
-                break;
-        }
-    }
-
-    private float computeMaxLenToScreenEdge(float camLeftX, float viewW, float viewRightX) {
-        // Longitud desde el arma hasta el borde derecho/izquierdo de la pantalla
-        if (derecha) {
-            return Math.max(0f, viewRightX - ox);
-        } else {
-            return Math.max(0f, ox - camLeftX);
-        }
-    }
-
-    public void draw(SpriteBatch batch, float camLeftX, float viewW) {
-        float drawY = oy + yOffset;
+        float maxLen = computeMaxLenToScreenEdge(camLeftX, viewW);
 
         if (estado == Estado.START) {
-            TextureRegion fr = startAnim.getKeyFrame(stateTime, false);
-            drawFlipped(batch, fr, ox, drawY, startW, startH);
+            if (startAnim.isAnimationFinished(stateTime)) {
+                estado = Estado.BODY;
+                stateTime = 0f;
+                bodyLen = 0f;
+            }
             return;
         }
 
         if (estado == Estado.BODY) {
-            // Dibujamos start “fijo” en el arma (opcional, pero queda mejor)
-            TextureRegion frStart = startAnim.getKeyFrame(Math.min(stateTime, 0.0001f), false);
-            drawFlipped(batch, frStart, ox, drawY, startW, startH);
+            bodyLen += growSpeed * delta;
 
-            // Body: estiramos a lo largo (continuo)
-            float bodyX = derecha ? ox : (ox - bodyLen);
-            float bodyW = bodyLen;
-
-            if (bodyW > 0.01f) {
-                if (derecha) {
-                    batch.draw(bodyRegion, bodyX, drawY, bodyW, bodyH);
-                } else {
-                    // para la izquierda, dibujamos con ancho negativo
-                    batch.draw(bodyRegion, bodyX + bodyW, drawY, -bodyW, bodyH);
-                }
+            if (bodyLen >= maxLen) {
+                bodyLen = maxLen;
+                estado = Estado.END;
+                stateTime = 0f;
             }
 
+            if (!holding) {
+                estado = Estado.END;
+                stateTime = 0f;
+            }
             return;
         }
 
         if (estado == Estado.END) {
-            // dibuja el body hasta el borde (si aún no estaba clavado)
-            float viewRightX = camLeftX + viewW;
-            float maxLen = computeMaxLenToScreenEdge(camLeftX, viewW, viewRightX);
-
-            float len = Math.max(bodyLen, maxLen);
-            float bodyX = derecha ? ox : (ox - len);
-            float bodyW = len;
-
-            if (bodyW > 0.01f) {
-                if (derecha) batch.draw(bodyRegion, bodyX, drawY, bodyW, bodyH);
-                else batch.draw(bodyRegion, bodyX + bodyW, drawY, -bodyW, bodyH);
+            if (endAnim.isAnimationFinished(stateTime)) {
+                estado = Estado.FIN;
             }
-
-            // explosión en el extremo
-            TextureRegion frEnd = endAnim.getKeyFrame(stateTime, false);
-
-            float endX = derecha ? (ox + bodyW) : (ox - bodyW);
-            float ex = derecha ? (endX - endW * 0.35f) : (endX - endW * 0.65f);
-            float ey = drawY + bodyH * 0.25f;
-
-            drawFlipped(batch, frEnd, ex, ey, endW, endH);
         }
+    }
+
+    private float computeMaxLenToScreenEdge(float camLeftX, float viewW) {
+        float rightX = camLeftX + viewW;
+        if (derecha) return Math.max(0f, rightX - ox);
+        return Math.max(0f, ox - camLeftX);
+    }
+
+    public void draw(SpriteBatch batch, float camLeftX, float viewW) {
+        if (estado == Estado.FIN) return;
+
+        float yCenter = oy + yOffset;
+        float yBeam = yCenter - beamH * 0.5f;
+
+        if (estado == Estado.START) {
+            TextureRegion fr = startAnim.getKeyFrame(stateTime, false);
+            float yStart = yCenter - startH * 0.5f;
+            drawFlipped(batch, fr, ox, yStart, startW, startH);
+            return;
+        }
+
+        float maxLen = computeMaxLenToScreenEdge(camLeftX, viewW);
+        float len = (estado == Estado.END) ? maxLen : bodyLen;
+
+        TextureRegion startFrame = startAnim.getKeyFrames()[startAnim.getKeyFrames().length - 1];
+        float yStart = yCenter - startH * 0.5f;
+        drawFlipped(batch, startFrame, ox, yStart, startW, startH);
+
+        float tipX = derecha ? (ox + len) : (ox - len);
+
+        float bodyFrom = derecha ? (ox + startW * 0.35f) : (ox - startW * 0.35f);
+        float bodyTo = derecha ? (tipX - endW * 0.35f) : (tipX + endW * 0.35f);
+
+        float bodyLenVisible = derecha ? (bodyTo - bodyFrom) : (bodyFrom - bodyTo);
+        if (bodyLenVisible < 0f) bodyLenVisible = 0f;
+
+        int tiles = (int) Math.ceil(bodyLenVisible / tileW);
+
+        for (int i = 0; i < tiles; i++) {
+            float bx = derecha ? (bodyFrom + i * tileW) : (bodyFrom - i * tileW - tileW);
+            float w = tileW;
+
+            if (derecha) {
+                float endX = bx + w;
+                if (endX > bodyTo) {
+                    w = bodyTo - bx;
+                    if (w <= 0f) continue;
+                }
+                batch.draw(bodyRegion, bx, yBeam, w, beamH);
+            } else {
+                if (bx < bodyTo) {
+                    float over = bodyTo - bx;
+                    w = tileW - over;
+                    if (w <= 0f) continue;
+                    bx = bodyTo;
+                }
+                batch.draw(bodyRegion, bx + w, yBeam, -w, beamH);
+            }
+        }
+
+        TextureRegion endFrame = (estado == Estado.END)
+            ? endAnim.getKeyFrame(stateTime, false)
+            : endAnim.getKeyFrames()[0];
+
+        float ex = derecha ? (tipX - endW * 0.10f) : (tipX - endW * 0.90f);
+        float ey = yCenter - endH * 0.5f;
+
+        drawFlipped(batch, endFrame, ex, ey, endW, endH);
     }
 
     private void drawFlipped(SpriteBatch batch, TextureRegion region, float x, float y, float w, float h) {
@@ -197,5 +181,28 @@ public class ChorroEspecial {
         } else {
             batch.draw(region, x + w, y, -w, h);
         }
+    }
+
+    private void recomputeSizes() {
+        startH = beamH * 0.45f;
+        startW = startH * 1.20f;
+
+        endH = beamH * 0.65f;
+        endW = endH * 1.10f;
+
+        tileW = beamH * 1.10f;
+    }
+
+    public void setBeamHeight(float h) {
+        this.beamH = h;
+        recomputeSizes();
+    }
+
+    public void setGrowSpeed(float speed) {
+        this.growSpeed = speed;
+    }
+
+    public void setYOffset(float yOffset) {
+        this.yOffset = yOffset;
     }
 }
