@@ -19,14 +19,14 @@ public class Jugador {
     private float x = 10f;
     private float y = 2f;
 
-    private float velocidadX = 4f;
+    private float velocidadX = 5.5f;
 
     private float velY = 0f;
     private boolean enSuelo = true;
     private float sueloY = 2f;
 
-    private static final float GRAVEDAD = -35f;
-    private static final float VEL_SALTO = 10f;
+    private static final float GRAVEDAD = -30f;
+    private static final float VEL_SALTO = 12f;
 
     private float tiempoDerrape = 0f;
     private int dirDerrape = 0;

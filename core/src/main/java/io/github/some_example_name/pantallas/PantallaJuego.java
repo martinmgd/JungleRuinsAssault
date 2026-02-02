@@ -51,8 +51,14 @@ public class PantallaJuego extends ScreenAdapter {
     private GestorEfectos gestorEfectos;
 
     private GestorEnemigos gestorEnemigos;
+
     private Texture serpienteWalk;
     private Texture serpienteDeath;
+
+    // Texturas del pájaro
+    private Texture pajaroAttak;
+    private Texture pajaroDeath;
+
     private VenenoAssets venenoAssets;
 
     private final Color colorImpactoNormal = new Color(1f, 0.6f, 0.15f, 1f);
@@ -84,10 +90,26 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEfectos = new GestorEfectos(impactoAssets.impacto);
         gestorEfectos.setImpactoConfig(0.55f, 0.55f, 0.14f);
 
+
+        // Texturas serpiente
+
         serpienteWalk = new Texture("sprites/enemigos/serpiente/serpiente_walk.png");
         serpienteDeath = new Texture("sprites/enemigos/serpiente/serpiente_death.png");
+        serpienteWalk.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        serpienteDeath.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
 
-        gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, PPU);
+
+        // TEXTURAS PAJARO
+
+        pajaroAttak = new Texture("sprites/enemigos/pajaro/pajaro_attack.png");
+        pajaroDeath = new Texture("sprites/enemigos/pajaro/pajaro_dead.png");
+        pajaroAttak.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        pajaroDeath.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+
+
+        // GESTOR ENEMIGOS (CONSTRUCTOR NUEVO)
+
+        gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
 
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
@@ -112,6 +134,22 @@ public class PantallaJuego extends ScreenAdapter {
         );
         gestorEnemigos.setYOffsetWorld(0.15f);
 
+        // =========================
+        // CONFIG Pajaro (spawnea arriba y pica)
+        // yTop = suelo + alto visible (así "arriba del todo" en tu mundo)
+        // =========================
+        float yTopPantalla = parallax.getGroundY() + viewport.getWorldHeight() + 0.5f;
+
+        gestorEnemigos.setPajaroConfig(
+            2.4f,       // interval (cada cuánto aparece)
+            2,                  // maxPajaros
+            yTopPantalla,
+            0.8f,  // margen X para aparecer fuera del borde
+            12.0f,              // diveSpeed (velocidad picado/subida)
+            12,                 // daño por contacto
+            0.60f               // cd contacto
+        );
+
         venenoAssets = new VenenoAssets();
         gestorEnemigos.setVenenoRegion(venenoAssets.veneno);
 
@@ -130,8 +168,20 @@ public class PantallaJuego extends ScreenAdapter {
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
+
         gestorEnemigos.setYsuelo(parallax.getGroundY());
 
+        // recalcular yTop del pájaro si cambia la altura visible
+        float yTopPantalla = parallax.getGroundY() + viewport.getWorldHeight() + 0.5f;
+        gestorEnemigos.setPajaroConfig(
+            2.4f,
+            2,
+            yTopPantalla,
+            0.8f,
+            12.0f,
+            12,
+            0.60f
+        );
     }
 
     @Override
@@ -207,9 +257,7 @@ public class PantallaJuego extends ScreenAdapter {
 
         gestorProyectiles.update(delta, cameraLeftX, viewW);
 
-
         gestorEnemigos.update(delta);
-
         gestorEnemigos.updateAtaques(delta, jugador, PPU, cameraLeftX, viewW);
 
         gestorEfectos.update(delta);
@@ -271,8 +319,13 @@ public class PantallaJuego extends ScreenAdapter {
         if (parallax != null) parallax.dispose();
         if (disparoAssets != null) disparoAssets.dispose();
         if (impactoAssets != null) impactoAssets.dispose();
+
         if (serpienteWalk != null) serpienteWalk.dispose();
         if (serpienteDeath != null) serpienteDeath.dispose();
+
+        if (pajaroAttak != null) pajaroAttak.dispose();
+        if (pajaroDeath != null) pajaroDeath.dispose();
+
         if (venenoAssets != null) venenoAssets.dispose();
     }
 }
