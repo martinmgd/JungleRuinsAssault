@@ -1,8 +1,9 @@
-package io.github.some_example_name.entidades;
+package io.github.some_example_name.entidades.jugador;
 
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.Rectangle;
 
 public class Jugador {
 
@@ -15,13 +16,11 @@ public class Jugador {
     private Estado estado = Estado.IDLE;
     private float stateTime = 0f;
 
-    // Posición en unidades de mundo
     private float x = 10f;
     private float y = 2f;
 
     private float velocidadX = 4f;
 
-    // Física vertical
     private float velY = 0f;
     private boolean enSuelo = true;
     private float sueloY = 2f;
@@ -29,16 +28,20 @@ public class Jugador {
     private static final float GRAVEDAD = -35f;
     private static final float VEL_SALTO = 10f;
 
-    // Derrape corto estando agachado
     private float tiempoDerrape = 0f;
     private int dirDerrape = 0;
 
-    // Derrape muy corto para no dar sensación de "patinaje"
     private static final float DURACION_DERRAPE = 0.10f;
     private static final float MULT_VELOCIDAD_DERRAPE = 0.25f;
 
-    // Bloqueo de movimiento mientras siga agachado tras derrapar
     private boolean bloqueoMovimientoAgachado = false;
+
+    private final Rectangle hitbox = new Rectangle();
+
+    private int vida = 100;
+
+    private float invulnTimer = 0f;
+    private float invulnDuration = 0.70f;
 
     public Jugador(PlayerAnimations anims) {
         this.anims = anims;
@@ -56,29 +59,27 @@ public class Jugador {
 
     public void aplicarEntrada(float dir, boolean saltar, boolean agacharse, float delta) {
 
-        // Tiempo de animación
         stateTime += delta;
 
-        // Si se deja de agachar, se permite moverse normalmente
+        if (invulnTimer > 0f) {
+            invulnTimer = Math.max(0f, invulnTimer - delta);
+        }
+
         if (!agacharse) {
             bloqueoMovimientoAgachado = false;
         }
 
-        // Orientación
         if (dir > 0f) mirandoDerecha = true;
         else if (dir < 0f) mirandoDerecha = false;
 
-        // Inicio de salto solo si está en el suelo
         if (saltar && enSuelo) {
             velY = VEL_SALTO;
             enSuelo = false;
             setEstado(Estado.JUMP);
         }
 
-        // Movimiento horizontal
         if (agacharse && enSuelo) {
 
-            // Si aún no está bloqueado, permitimos iniciar un derrape corto
             if (!bloqueoMovimientoAgachado) {
 
                 if (tiempoDerrape <= 0f && dir != 0f) {
@@ -86,35 +87,26 @@ public class Jugador {
                     dirDerrape = (dir > 0f) ? 1 : -1;
                 }
 
-                // Mientras dure el derrape, se mueve un poco
                 if (tiempoDerrape > 0f) {
                     x += dirDerrape * velocidadX * MULT_VELOCIDAD_DERRAPE * delta;
                     tiempoDerrape -= delta;
 
-                    // Al terminar el derrape, se bloquea el movimiento hasta que deje de agacharse
                     if (tiempoDerrape <= 0f) {
                         bloqueoMovimientoAgachado = true;
                         tiempoDerrape = 0f;
                         dirDerrape = 0;
                     }
-                } else {
-                    // Agachado sin derrape: quieto
                 }
 
-            } else {
-                // Agachado y bloqueado: no se mueve
             }
 
         } else {
-            // Movimiento normal (de pie o en el aire)
             x += dir * velocidadX * delta;
 
-            // Reinicio de derrape al estar fuera del estado agachado
             tiempoDerrape = 0f;
             dirDerrape = 0;
         }
 
-        // Física vertical
         if (!enSuelo) {
             velY += GRAVEDAD * delta;
             y += velY * delta;
@@ -126,7 +118,6 @@ public class Jugador {
             }
         }
 
-        // Selección de estado
         if (!enSuelo) {
             setEstado(Estado.JUMP);
 
@@ -140,8 +131,6 @@ public class Jugador {
             setEstado(Estado.IDLE);
         }
 
-        // El salto no hace loop: cuando termina la animación y ya está en el suelo,
-        // vuelve al estado correcto.
         if (estado == Estado.JUMP && enSuelo) {
             if (anims.jump.isAnimationFinished(stateTime)) {
                 if (agacharse) setEstado(Estado.CROUCH);
@@ -154,7 +143,6 @@ public class Jugador {
     private void setEstado(Estado nuevoEstado) {
         if (estado == nuevoEstado) return;
 
-        // Al cambiar de estado, la animación comienza desde el primer frame
         estado = nuevoEstado;
         stateTime = 0f;
     }
@@ -187,6 +175,37 @@ public class Jugador {
         }
     }
 
+    public Rectangle getHitbox(float pixelsPerUnit) {
+        float w = getWidth(pixelsPerUnit);
+        float h = getHeight(pixelsPerUnit);
+
+        float hbW = w * 0.55f;
+        float hbH = h * 0.80f;
+
+        float hbX = x + (w - hbW) * 0.5f;
+        float hbY = y;
+
+        hitbox.set(hbX, hbY, hbW, hbH);
+        return hitbox;
+    }
+
+    public void recibirDanio(int dmg) {
+        if (invulnTimer > 0f) return;
+
+        vida -= dmg;
+        if (vida < 0) vida = 0;
+
+        invulnTimer = invulnDuration;
+    }
+
+    public int getVida() {
+        return vida;
+    }
+
+    public boolean isInvulnerable() {
+        return invulnTimer > 0f;
+    }
+
     public float getX() { return x; }
     public void setX(float x) { this.x = x; }
 
@@ -201,13 +220,10 @@ public class Jugador {
         return PlayerAnimations.FRAME_H / pixelsPerUnit;
     }
 
-    // ✅ AÑADIDO: dirección para disparar a izquierda/derecha
     public boolean isMirandoDerecha() {
         return mirandoDerecha;
     }
 
-    // ✅ AÑADIDO: punto de salida del disparo (aprox a la altura del arma)
-    // Ajusta estos multiplicadores si quieres afinar:
     public float getMuzzleX(float pixelsPerUnit) {
         float w = getWidth(pixelsPerUnit);
         return mirandoDerecha ? (x + w * 0.85f) : (x + w * 0.15f);

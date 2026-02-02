@@ -1,4 +1,4 @@
-package io.github.some_example_name.entidades;
+package io.github.some_example_name.entidades.proyectiles.jugador;
 
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.Array;
@@ -35,7 +35,8 @@ public class GestorProyectiles {
         for (int i = normales.size - 1; i >= 0; i--) {
             Proyectil p = normales.get(i);
             p.update(delta);
-            if (p.isOutOfRange(camLeftX - 3f, rightX + 3f)) {
+
+            if (p.isEliminar() || p.isOutOfRange(camLeftX - 3f, rightX + 3f)) {
                 normales.removeIndex(i);
             }
         }
@@ -81,14 +82,18 @@ public class GestorProyectiles {
             x, y, derecha, viewH
         );
 
-        // Si quieres tunear sin tocar código después:
-        // especial.setBeamHeightFrac(0.10f, viewH);
-        // especial.setBuildMinFrac(0.10f);
-        // especial.setBuildTimings(0.030f, 0.060f);
-        // especial.setGrowSpeed(80f);
+        especial.setDamage(50);
     }
 
     public boolean isEspecialActivo() {
         return especial != null;
+    }
+
+    public Array<Proyectil> getNormales() {
+        return normales;
+    }
+
+    public AtaqueEspecial getEspecial() {
+        return especial;
     }
 }

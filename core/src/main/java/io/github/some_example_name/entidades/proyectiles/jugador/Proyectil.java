@@ -1,8 +1,9 @@
-package io.github.some_example_name.entidades;
+package io.github.some_example_name.entidades.proyectiles.jugador;
 
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.Rectangle;
 
 public class Proyectil {
 
@@ -19,6 +20,10 @@ public class Proyectil {
 
     private final int damage;
 
+    private boolean eliminar = false;
+
+    private final Rectangle hitbox = new Rectangle();
+
     public Proyectil(Animation<TextureRegion> anim,
                      float x, float y, float vx,
                      boolean haciaDerecha,
@@ -32,11 +37,15 @@ public class Proyectil {
         this.w = w;
         this.h = h;
         this.damage = damage;
+
+        hitbox.set(x, y, w, h);
     }
 
     public void update(float delta) {
         stateTime += delta;
         x += vx * delta;
+        hitbox.x = x;
+        hitbox.y = y;
     }
 
     public void draw(SpriteBatch batch) {
@@ -54,4 +63,20 @@ public class Proyectil {
     }
 
     public int getDamage() { return damage; }
+
+    public Rectangle getHitbox() {
+        return hitbox;
+    }
+
+    public void marcarEliminar() {
+        eliminar = true;
+    }
+
+    public boolean isEliminar() {
+        return eliminar;
+    }
+
+    public float getVx() {
+        return vx;
+    }
 }

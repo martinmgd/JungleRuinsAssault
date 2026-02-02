@@ -1,4 +1,4 @@
-package io.github.some_example_name.entidades;
+package io.github.some_example_name.entidades.jugador;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;

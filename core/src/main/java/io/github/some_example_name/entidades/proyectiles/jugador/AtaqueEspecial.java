@@ -1,16 +1,17 @@
-package io.github.some_example_name.entidades;
+package io.github.some_example_name.entidades.proyectiles.jugador;
 
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.Rectangle;
 
 public class AtaqueEspecial {
 
     private enum Estado { BUILD, LOOP, END, FIN }
 
-    private final Animation<TextureRegion> buildAnim; // 8 frames
-    private final Animation<TextureRegion> loopAnim;  // 3 frames loop
-    private final Animation<TextureRegion> endAnim;   // 1 frame
+    private final Animation<TextureRegion> buildAnim;
+    private final Animation<TextureRegion> loopAnim;
+    private final Animation<TextureRegion> endAnim;
 
     private final TextureRegion[] buildFrames;
 
@@ -24,20 +25,19 @@ public class AtaqueEspecial {
     private float len = 0f;
     private float growSpeed = 50f;
 
-    // Altura final del rayo (muy pequeño: 10% del alto)
     private float beamH;
 
-    // Build empieza al 10% del tamaño final y sube hasta beamH
     private float buildMinFrac = 0.10f;
 
-    // Ajuste vertical fino (en unidades mundo). 0 = exactamente a la altura oy
     private float yOffset = 0.0f;
 
-    // Timings BUILD (frames 1..6 rápidos, 7..8 un poco más lentos)
-    private float buildFastFrameTime = 0.030f; // idx 0..5
-    private float buildSlowFrameTime = 0.060f; // idx 6..7
+    private float buildFastFrameTime = 0.030f;
+    private float buildSlowFrameTime = 0.060f;
     private int buildFrameIndex = 0;
     private float buildFrameTimer = 0f;
+
+    private final Rectangle hitbox = new Rectangle();
+    private int damage = 40;
 
     public AtaqueEspecial(Animation<TextureRegion> buildAnim,
                           Animation<TextureRegion> loopAnim,
@@ -56,8 +56,6 @@ public class AtaqueEspecial {
 
         this.beamH = Math.max(0.15f, viewH * 0.10f);
 
-
-        // Dejamos el offset en 0 por defecto
         this.yOffset = 0.0f;
     }
 
@@ -116,23 +114,22 @@ public class AtaqueEspecial {
     public void draw(SpriteBatch batch, float camLeftX, float viewW) {
         if (estado == Estado.FIN) return;
 
-        // Línea vertical fija (centro del rayo)
         float yCenter = oy + yOffset;
 
         if (estado == Estado.BUILD) {
             int idx = Math.min(buildFrameIndex, buildFrames.length - 1);
             TextureRegion fr = buildFrames[idx];
 
-            float t = (buildFrames.length <= 1) ? 1f : (idx / (float)(buildFrames.length - 1));
+            float tt = (buildFrames.length <= 1) ? 1f : (idx / (float) (buildFrames.length - 1));
 
             float minH = beamH * buildMinFrac;
-            float h = minH + (beamH - minH) * t;
+            float h = minH + (beamH - minH) * tt;
 
             float aspect = fr.getRegionWidth() / (float) fr.getRegionHeight();
             float w = h * aspect;
 
             float x = derecha ? ox : (ox - w);
-            float y = yCenter - h * 0.5f; // anclaje centrado -> NO sube
+            float y = yCenter - h * 0.5f;
 
             if (derecha) batch.draw(fr, x, y, w, h);
             else batch.draw(fr, x + w, y, -w, h);
@@ -148,7 +145,7 @@ public class AtaqueEspecial {
         float h = beamH;
 
         float x = derecha ? ox : (ox - w);
-        float y = yCenter - h * 0.5f; // anclaje centrado -> recto
+        float y = yCenter - h * 0.5f;
 
         if (derecha) batch.draw(fr, x, y, w, h);
         else batch.draw(fr, x + w, y, -w, h);
@@ -177,5 +174,28 @@ public class AtaqueEspecial {
     public void setBuildTimings(float fastFrameTime, float slowFrameTime) {
         this.buildFastFrameTime = fastFrameTime;
         this.buildSlowFrameTime = slowFrameTime;
+    }
+
+    public Rectangle getHitbox() {
+        if (estado != Estado.LOOP && estado != Estado.END) return null;
+
+        float yCenter = oy + yOffset;
+
+        float w = len;
+        float h = beamH;
+
+        float x = derecha ? ox : (ox - w);
+        float y = yCenter - h * 0.5f;
+
+        hitbox.set(x, y, w, h);
+        return hitbox;
+    }
+
+    public int getDamage() {
+        return damage;
+    }
+
+    public void setDamage(int damage) {
+        this.damage = damage;
     }
 }

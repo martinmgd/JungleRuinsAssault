@@ -3,18 +3,28 @@ package io.github.some_example_name.pantallas;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
 import io.github.some_example_name.Main;
-import io.github.some_example_name.entidades.GestorProyectiles;
-import io.github.some_example_name.entidades.Jugador;
-import io.github.some_example_name.entidades.PlayerAnimations;
+import io.github.some_example_name.entidades.efectos.GestorEfectos;
+import io.github.some_example_name.entidades.enemigos.GestorEnemigos;
+import io.github.some_example_name.entidades.enemigos.Serpiente;
+import io.github.some_example_name.entidades.jugador.Jugador;
+import io.github.some_example_name.entidades.jugador.PlayerAnimations;
+import io.github.some_example_name.entidades.proyectiles.jugador.AtaqueEspecial;
+import io.github.some_example_name.entidades.proyectiles.jugador.GestorProyectiles;
+import io.github.some_example_name.entidades.proyectiles.jugador.Proyectil;
 import io.github.some_example_name.utilidades.Constantes;
 import io.github.some_example_name.utilidades.DisparoAssets;
+import io.github.some_example_name.utilidades.ImpactoAssets;
 import io.github.some_example_name.utilidades.ParallaxBackground;
+import io.github.some_example_name.utilidades.VenenoAssets;
 
 public class PantallaJuego extends ScreenAdapter {
 
@@ -36,6 +46,16 @@ public class PantallaJuego extends ScreenAdapter {
 
     private DisparoAssets disparoAssets;
     private GestorProyectiles gestorProyectiles;
+
+    private ImpactoAssets impactoAssets;
+    private GestorEfectos gestorEfectos;
+
+    private GestorEnemigos gestorEnemigos;
+    private Texture serpienteWalk;
+    private Texture serpienteDeath;
+    private VenenoAssets venenoAssets;
+
+    private final Color colorImpactoNormal = new Color(1f, 0.6f, 0.15f, 1f);
 
     public PantallaJuego(Main juego) {
         this.juego = juego;
@@ -60,6 +80,15 @@ public class PantallaJuego extends ScreenAdapter {
         disparoAssets = new DisparoAssets();
         gestorProyectiles = new GestorProyectiles(disparoAssets);
 
+        impactoAssets = new ImpactoAssets();
+        gestorEfectos = new GestorEfectos(impactoAssets.impacto);
+        gestorEfectos.setImpactoConfig(0.55f, 0.55f, 0.14f);
+
+        serpienteWalk = new Texture("sprites/enemigos/serpiente/serpiente_walk.png");
+        serpienteDeath = new Texture("sprites/enemigos/serpiente/serpiente_death.png");
+
+        gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, PPU);
+
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
@@ -70,6 +99,24 @@ public class PantallaJuego extends ScreenAdapter {
         jugador.setX(viewW / 2f);
         jugador.setSueloY(parallax.getGroundY());
         jugador.setY(parallax.getGroundY());
+
+        gestorEnemigos.setYsuelo(parallax.getGroundY());
+        gestorEnemigos.setAnimacion(128, 80, 0.20f);
+        gestorEnemigos.setStats(2.0f, 10);
+        gestorEnemigos.setSpawnConfig(
+            2.2f,
+            6,
+            10f,
+            anchoNivel - 10f,
+            2.5f
+        );
+        gestorEnemigos.setYOffsetWorld(0.15f);
+
+        venenoAssets = new VenenoAssets();
+        gestorEnemigos.setVenenoRegion(venenoAssets.veneno);
+
+        gestorEnemigos.setAtaques(12, 0.9f, 8, 1.8f);
+        gestorEnemigos.setVenenoConfig(2.2f, 7.5f, 10.0f, 0.35f, 0.35f);
     }
 
     @Override
@@ -83,23 +130,15 @@ public class PantallaJuego extends ScreenAdapter {
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
+        gestorEnemigos.setYsuelo(parallax.getGroundY());
+
     }
 
     @Override
     public void render(float delta) {
 
-        // OFFSETS de disparo
         float h = jugador.getHeight(PPU);
 
-        // Disparo normal
-        float NORMAL_STAND_OFFSET = h * 0.10f;
-        float NORMAL_CROUCH_OFFSET = h * 0.29f;
-
-        // Disparo especial
-        float SPECIAL_STAND_OFFSET = h * 0.05f;
-        float SPECIAL_CROUCH_OFFSET = h * 0.29f;
-
-        // Input de movimiento
         float dir = 0f;
         if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) dir -= 1f;
         if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dir += 1f;
@@ -111,14 +150,11 @@ public class PantallaJuego extends ScreenAdapter {
         boolean agacharse = Gdx.input.isKeyPressed(Input.Keys.S)
             || Gdx.input.isKeyPressed(Input.Keys.DOWN);
 
-        // Disparos
         boolean disparaNormal = Gdx.input.isKeyJustPressed(Input.Keys.J);
         boolean disparaEspecial = Gdx.input.isKeyJustPressed(Input.Keys.K);
 
-        // Actualizar jugador para poder girarse
         jugador.setSueloY(parallax.getGroundY());
         jugador.aplicarEntrada(dir, saltar, agacharse, delta);
-
 
         if (disparaNormal || disparaEspecial) {
 
@@ -127,12 +163,9 @@ public class PantallaJuego extends ScreenAdapter {
             float sx = jugador.getMuzzleX(PPU);
             float sy = jugador.getMuzzleY(PPU);
 
-            // OFFSETS
-            // Ataque normal
             float NORMAL_STAND = h * 0.10f;
             float NORMAL_CROUCH = h * 0.29f;
 
-            // Ataque especial
             float SPECIAL_STAND = h * 0.05f;
             float SPECIAL_CROUCH = h * 0.29f;
 
@@ -159,7 +192,6 @@ public class PantallaJuego extends ScreenAdapter {
             }
         }
 
-        // 5) Render
         ScreenUtils.clear(0f, 0f, 0f, 1f);
 
         viewport.apply();
@@ -175,20 +207,72 @@ public class PantallaJuego extends ScreenAdapter {
 
         gestorProyectiles.update(delta, cameraLeftX, viewW);
 
+
+        gestorEnemigos.update(delta);
+
+        gestorEnemigos.updateAtaques(delta, jugador, PPU, cameraLeftX, viewW);
+
+        gestorEfectos.update(delta);
+
+        for (Serpiente s : gestorEnemigos.getSerpientes()) {
+            if (s.isDead()) continue;
+
+            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
+                Proyectil p = gestorProyectiles.getNormales().get(i);
+                if (p.isEliminar()) continue;
+
+                if (s.getHitbox().overlaps(p.getHitbox())) {
+                    s.recibirDanio(p.getDamage());
+
+                    Rectangle hb = p.getHitbox();
+
+                    float cy = hb.y + hb.height * 0.5f;
+
+                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
+
+                    float avance = 0.10f;
+                    float shift = (p.getVx() >= 0f) ? avance : -avance;
+
+                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
+
+                    p.marcarEliminar();
+                }
+            }
+        }
+
+        AtaqueEspecial esp = gestorProyectiles.getEspecial();
+        if (esp != null) {
+            Rectangle hbRayo = esp.getHitbox();
+            if (hbRayo != null) {
+                for (Serpiente s : gestorEnemigos.getSerpientes()) {
+                    if (s.isDead()) continue;
+
+                    if (s.getHitbox().overlaps(hbRayo)) {
+                        s.recibirDanio(esp.getDamage());
+                    }
+                }
+            }
+        }
+
         juego.batch.begin();
 
         parallax.render(juego.batch, cameraLeftX, viewW);
         gestorProyectiles.draw(juego.batch, cameraLeftX, viewW);
+        gestorEnemigos.render(juego.batch, cameraLeftX, viewW);
+        gestorEfectos.draw(juego.batch);
         jugador.draw(juego.batch, PPU);
 
         juego.batch.end();
     }
-
 
     @Override
     public void dispose() {
         if (anims != null) anims.dispose();
         if (parallax != null) parallax.dispose();
         if (disparoAssets != null) disparoAssets.dispose();
+        if (impactoAssets != null) impactoAssets.dispose();
+        if (serpienteWalk != null) serpienteWalk.dispose();
+        if (serpienteDeath != null) serpienteDeath.dispose();
+        if (venenoAssets != null) venenoAssets.dispose();
     }
 }
