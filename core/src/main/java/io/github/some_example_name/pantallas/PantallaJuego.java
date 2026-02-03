@@ -14,6 +14,7 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import io.github.some_example_name.Main;
 import io.github.some_example_name.entidades.efectos.GestorEfectos;
 import io.github.some_example_name.entidades.enemigos.GestorEnemigos;
+import io.github.some_example_name.entidades.enemigos.Pajaro;
 import io.github.some_example_name.entidades.enemigos.Serpiente;
 import io.github.some_example_name.entidades.jugador.Jugador;
 import io.github.some_example_name.entidades.jugador.PlayerAnimations;
@@ -55,7 +56,6 @@ public class PantallaJuego extends ScreenAdapter {
     private Texture serpienteWalk;
     private Texture serpienteDeath;
 
-    // Texturas del pájaro
     private Texture pajaroAttak;
     private Texture pajaroDeath;
 
@@ -90,24 +90,15 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEfectos = new GestorEfectos(impactoAssets.impacto);
         gestorEfectos.setImpactoConfig(0.55f, 0.55f, 0.14f);
 
-
-        // Texturas serpiente
-
         serpienteWalk = new Texture("sprites/enemigos/serpiente/serpiente_walk.png");
         serpienteDeath = new Texture("sprites/enemigos/serpiente/serpiente_death.png");
         serpienteWalk.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         serpienteDeath.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
 
-
-        // TEXTURAS PAJARO
-
         pajaroAttak = new Texture("sprites/enemigos/pajaro/pajaro_attack.png");
         pajaroDeath = new Texture("sprites/enemigos/pajaro/pajaro_dead.png");
         pajaroAttak.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         pajaroDeath.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-
-
-        // GESTOR ENEMIGOS (CONSTRUCTOR NUEVO)
 
         gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
 
@@ -134,20 +125,16 @@ public class PantallaJuego extends ScreenAdapter {
         );
         gestorEnemigos.setYOffsetWorld(0.15f);
 
-        // =========================
-        // CONFIG Pajaro (spawnea arriba y pica)
-        // yTop = suelo + alto visible (así "arriba del todo" en tu mundo)
-        // =========================
         float yTopPantalla = parallax.getGroundY() + viewport.getWorldHeight() + 0.5f;
 
         gestorEnemigos.setPajaroConfig(
-            2.4f,       // interval (cada cuánto aparece)
-            2,                  // maxPajaros
+            2.4f,
+            2,
             yTopPantalla,
-            0.8f,  // margen X para aparecer fuera del borde
-            12.0f,              // diveSpeed (velocidad picado/subida)
-            12,                 // daño por contacto
-            0.60f               // cd contacto
+            0.8f,
+            12.0f,
+            12,
+            0.60f
         );
 
         venenoAssets = new VenenoAssets();
@@ -171,7 +158,6 @@ public class PantallaJuego extends ScreenAdapter {
 
         gestorEnemigos.setYsuelo(parallax.getGroundY());
 
-        // recalcular yTop del pájaro si cambia la altura visible
         float yTopPantalla = parallax.getGroundY() + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(
             2.4f,
@@ -273,7 +259,31 @@ public class PantallaJuego extends ScreenAdapter {
                     s.recibirDanio(p.getDamage());
 
                     Rectangle hb = p.getHitbox();
+                    float cy = hb.y + hb.height * 0.5f;
 
+                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
+
+                    float avance = 0.10f;
+                    float shift = (p.getVx() >= 0f) ? avance : -avance;
+
+                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
+
+                    p.marcarEliminar();
+                }
+            }
+        }
+
+        for (Pajaro b : gestorEnemigos.getPajaros()) {
+            if (b.isDead()) continue;
+
+            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
+                Proyectil p = gestorProyectiles.getNormales().get(i);
+                if (p.isEliminar()) continue;
+
+                if (b.getHitbox(PPU).overlaps(p.getHitbox())) {
+                    b.recibirDanio(p.getDamage());
+
+                    Rectangle hb = p.getHitbox();
                     float cy = hb.y + hb.height * 0.5f;
 
                     float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
@@ -294,9 +304,15 @@ public class PantallaJuego extends ScreenAdapter {
             if (hbRayo != null) {
                 for (Serpiente s : gestorEnemigos.getSerpientes()) {
                     if (s.isDead()) continue;
-
                     if (s.getHitbox().overlaps(hbRayo)) {
                         s.recibirDanio(esp.getDamage());
+                    }
+                }
+
+                for (Pajaro b : gestorEnemigos.getPajaros()) {
+                    if (b.isDead()) continue;
+                    if (b.getHitbox(PPU).overlaps(hbRayo)) {
+                        b.recibirDanio(esp.getDamage());
                     }
                 }
             }

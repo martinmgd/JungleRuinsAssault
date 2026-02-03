@@ -12,9 +12,6 @@ import io.github.some_example_name.entidades.proyectiles.enemigos.ProyectilVenen
 
 public class GestorEnemigos {
 
-    // =========================
-    // SERPIENTES + VENENO
-    // =========================
     private final Array<Serpiente> serpientes = new Array<>();
     private final Array<ProyectilVeneno> venenos = new Array<>();
 
@@ -56,9 +53,6 @@ public class GestorEnemigos {
     private float venenoW = 0.35f;
     private float venenoH = 0.35f;
 
-    // =========================
-    // PAJAROS (desde arriba, picado)
-    // =========================
     private final Array<Pajaro> pajaros = new Array<>();
 
     private final Texture pajaroAttak;
@@ -68,22 +62,23 @@ public class GestorEnemigos {
     private float spawnIntervalP = 2.4f;
     private int maxPajaros = 2;
 
-    // yTop en unidades del mundo (ajústalo a tu cámara)
     private float pajaroYTop = 9.5f;
-
-    // margen horizontal para spawnear fuera o borde
     private float pajaroSpawnMarginX = 0.8f;
-
-    // velocidad del picado
     private float pajaroDiveSpeed = 12.0f;
 
-    // daño por contacto
     private int pajaroDmgContacto = 12;
     private float pajaroCdContacto = 0.60f;
 
-    // =========================
-    // CONSTRUCTOR
-    // =========================
+    private float pajaroWWorld = 1.10f;
+    private float pajaroHWorld = 0.95f;
+
+    private float pajaroMaxBajadaFracJugador = 0.62f;
+
+    private float pajDeadDelay = 0.10f;
+    private float pajBlinkStart = 0.60f;
+    private float pajDisappearAt = 1.20f;
+    private float pajBlinkPeriod = 0.10f;
+
     public GestorEnemigos(Texture serpienteWalk, Texture serpienteDeath,
                           Texture pajaroAttak, Texture pajaroDeath,
                           float ppu) {
@@ -96,13 +91,16 @@ public class GestorEnemigos {
         this.ppu = ppu;
     }
 
-    // =========================
-    // CONFIG GLOBAL
-    // =========================
     public void setYsuelo(float ySuelo) {
         this.ySuelo = ySuelo;
-        for (Serpiente s : serpientes) s.setSueloY(ySuelo);
-        // el Pajaro recibe ySuelo al spawnear (setSueloY internamente)
+
+        for (Serpiente s : serpientes) {
+            s.setSueloY(ySuelo);
+        }
+
+        for (Pajaro p : pajaros) {
+            p.setSueloY(ySuelo);
+        }
     }
 
     public void setYOffsetWorld(float yOffsetWorld) {
@@ -110,9 +108,6 @@ public class GestorEnemigos {
         for (Serpiente s : serpientes) s.setSueloY(ySuelo);
     }
 
-    // =========================
-    // CONFIG SERPIENTE
-    // =========================
     public void setAnimacion(int frameWpx, int frameHpx, float walkFrameDuration) {
         this.frameWpx = frameWpx;
         this.frameHpx = frameHpx;
@@ -151,9 +146,22 @@ public class GestorEnemigos {
         this.venenoH = Math.max(0.10f, venenoH);
     }
 
-    // =========================
-    // CONFIG PAJARO
-    // =========================
+    public void setPajaroSizeWorld(float w, float h) {
+        this.pajaroWWorld = Math.max(0.1f, w);
+        this.pajaroHWorld = Math.max(0.1f, h);
+    }
+
+    public void setPajaroAlturaImpacto(float fracAlturaJugador) {
+        this.pajaroMaxBajadaFracJugador = Math.max(0.10f, Math.min(fracAlturaJugador, 1.20f));
+    }
+
+    public void setPajaroMuerteConfig(float deadDelay, float blinkStart, float disappearAt, float blinkPeriod) {
+        this.pajDeadDelay = Math.max(0f, deadDelay);
+        this.pajBlinkStart = Math.max(0f, blinkStart);
+        this.pajDisappearAt = Math.max(this.pajBlinkStart, disappearAt);
+        this.pajBlinkPeriod = Math.max(0.04f, blinkPeriod);
+    }
+
     public void setPajaroConfig(float interval, int maxPajaros,
                                 float yTopPantalla, float spawnMarginX,
                                 float diveSpeed,
@@ -170,12 +178,8 @@ public class GestorEnemigos {
         this.pajaroCdContacto = Math.max(0.05f, cdContacto);
     }
 
-    // =========================
-    // UPDATE GLOBAL (serpientes + spawn timers)
-    // =========================
     public void update(float delta) {
 
-        // --- Serpientes ---
         for (int i = serpientes.size - 1; i >= 0; i--) {
             Serpiente s = serpientes.get(i);
             s.update(delta);
@@ -185,28 +189,20 @@ public class GestorEnemigos {
         spawnTimer += delta;
         if (spawnTimer >= spawnInterval) {
             spawnTimer -= spawnInterval;
-            if (serpientes.size < maxSerpientes) {
-                spawnSerpiente();
-            }
+            if (serpientes.size < maxSerpientes) spawnSerpiente();
         }
 
-        // --- Pajaros: aquí SOLO limpieza ---
         for (int i = pajaros.size - 1; i >= 0; i--) {
             if (pajaros.get(i).isEliminar()) pajaros.removeIndex(i);
         }
 
-        // El spawn real de pájaros se hace en updateAtaques() porque necesita camLeftX/viewW + jugador
         spawnTimerP += delta;
     }
 
-    // =========================
-    // UPDATE ATAQUES (jugador + camara)
-    // =========================
     public void updateAtaques(float delta, Jugador jugador, float ppu, float camLeftX, float viewW) {
 
         Rectangle hbJugador = jugador.getHitbox(ppu);
 
-        // --- Serpientes ---
         for (Serpiente s : serpientes) {
             s.tryMordiscoJugador(jugador, hbJugador);
 
@@ -233,26 +229,23 @@ public class GestorEnemigos {
             }
         }
 
-        // --- Spawn pájaros aquí (tiene cámara y jugador) ---
         while (spawnTimerP >= spawnIntervalP) {
             spawnTimerP -= spawnIntervalP;
-            if (pajaros.size < maxPajaros) {
-                spawnPajaro(camLeftX, viewW, jugador);
-            } else {
-                break;
-            }
+            if (pajaros.size < maxPajaros) spawnPajaro(camLeftX, viewW, jugador);
+            else break;
         }
 
-        // --- Update pájaros + contacto ---
+        float hJ = jugador.getHeight(ppu);
+        float minDiveY = ySuelo + hJ * pajaroMaxBajadaFracJugador;
+
         for (Pajaro p : pajaros) {
+            p.setSueloY(ySuelo);
+            p.setMinDiveY(minDiveY);
             p.update(delta);
             p.tryDanioContacto(jugador, hbJugador);
         }
     }
 
-    // =========================
-    // SPAWN SERPIENTE
-    // =========================
     private void spawnSerpiente() {
         float x = MathUtils.random(spawnMinX, spawnMaxX);
 
@@ -276,9 +269,6 @@ public class GestorEnemigos {
         serpientes.add(s);
     }
 
-    // =========================
-    // SPAWN PAJARO (arriba en un lado)
-    // =========================
     private void spawnPajaro(float camLeftX, float viewW, Jugador jugador) {
         boolean leftSide = MathUtils.randomBoolean();
 
@@ -299,27 +289,22 @@ public class GestorEnemigos {
         );
 
         p.setAtaqueContacto(pajaroDmgContacto, pajaroCdContacto);
+        p.setWorldSize(pajaroWWorld, pajaroHWorld);
+        p.setMuerteConfig(pajDeadDelay, pajBlinkStart, pajDisappearAt, pajBlinkPeriod);
+        p.setVida(6);
+        p.setSueloY(ySuelo);
+
         pajaros.add(p);
     }
 
-    // =========================
-    // RENDER
-    // =========================
     public void render(SpriteBatch batch, float camLeftX, float viewW) {
 
-        for (Serpiente s : serpientes) {
-            s.render(batch, camLeftX, viewW);
-        }
-
-        for (Pajaro p : pajaros) {
-            p.render(batch, camLeftX, viewW);
-        }
+        for (Serpiente s : serpientes) s.render(batch, camLeftX, viewW);
+        for (Pajaro p : pajaros) p.render(batch, camLeftX, viewW);
 
         float rightX = camLeftX + viewW;
         for (ProyectilVeneno v : venenos) {
-            if (!v.isOutOfRange(camLeftX - 2f, rightX + 2f)) {
-                v.draw(batch);
-            }
+            if (!v.isOutOfRange(camLeftX - 2f, rightX + 2f)) v.draw(batch);
         }
     }
 
