@@ -8,6 +8,7 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Array;
 
 import io.github.some_example_name.entidades.jugador.Jugador;
+import io.github.some_example_name.entidades.proyectiles.enemigos.ProyectilRoca;
 import io.github.some_example_name.entidades.proyectiles.enemigos.ProyectilVeneno;
 
 public class GestorEnemigos {
@@ -18,17 +19,15 @@ public class GestorEnemigos {
     private final Texture serpienteWalk;
     private final Texture serpienteDeath;
 
-    private final float ppu;
-
     private int frameWpx = 128;
     private int frameHpx = 80;
     private float walkFrameDuration = 0.20f;
 
-    private float velocidad = 2.0f;
-    private int vida = 10;
+    private float serpVelocidad = 2.0f;
+    private int serpVida = 10;
 
-    private float spawnTimer = 0f;
-    private float spawnInterval = 2.2f;
+    private float spawnTimerS = 0f;
+    private float spawnIntervalS = 2.2f;
 
     private int maxSerpientes = 6;
 
@@ -36,9 +35,6 @@ public class GestorEnemigos {
     private float spawnMaxX = 40f;
 
     private float patrolHalfRange = 2.5f;
-
-    private float ySuelo = 2f;
-    private float yOffsetWorld = 0.0f;
 
     private TextureRegion venenoRegion = null;
 
@@ -53,6 +49,7 @@ public class GestorEnemigos {
     private float venenoW = 0.35f;
     private float venenoH = 0.35f;
 
+    // Pájaros
     private final Array<Pajaro> pajaros = new Array<>();
 
     private final Texture pajaroAttak;
@@ -79,35 +76,56 @@ public class GestorEnemigos {
     private float pajDisappearAt = 1.20f;
     private float pajBlinkPeriod = 0.10f;
 
+    // Golems + rocas
+    private final Array<Golem> golems = new Array<>();
+    private final Array<ProyectilRoca> rocas = new Array<>();
+
+    private Texture golemIdle = null;
+    private Texture golemWalk = null;
+    private Texture golemThrow = null;
+    private Texture golemAttack = null;
+    private Texture golemDeath = null;
+
+    private TextureRegion rocaRegion = null;
+
+    private float spawnTimerG = 0f;
+    private float spawnIntervalG = 4.0f;
+    private int maxGolems = 2;
+
+    private float golemSpawnMinX = 10f;
+    private float golemSpawnMaxX = 40f;
+
+    private final float ppu;
+
+    // Global
+    private float ySuelo = 2f;
+    private float yOffsetWorld = 0.0f;
+
     public GestorEnemigos(Texture serpienteWalk, Texture serpienteDeath,
                           Texture pajaroAttak, Texture pajaroDeath,
                           float ppu) {
         this.serpienteWalk = serpienteWalk;
         this.serpienteDeath = serpienteDeath;
-
         this.pajaroAttak = pajaroAttak;
         this.pajaroDeath = pajaroDeath;
-
         this.ppu = ppu;
     }
 
     public void setYsuelo(float ySuelo) {
         this.ySuelo = ySuelo;
 
-        for (Serpiente s : serpientes) {
-            s.setSueloY(ySuelo);
-        }
-
-        for (Pajaro p : pajaros) {
-            p.setSueloY(ySuelo);
-        }
+        for (Serpiente s : serpientes) s.setSueloY(ySuelo);
+        for (Pajaro p : pajaros) p.setSueloY(ySuelo);
     }
 
     public void setYOffsetWorld(float yOffsetWorld) {
         this.yOffsetWorld = yOffsetWorld;
+
         for (Serpiente s : serpientes) s.setSueloY(ySuelo);
+        for (Pajaro p : pajaros) p.setSueloY(ySuelo);
     }
 
+    // Serpiente
     public void setAnimacion(int frameWpx, int frameHpx, float walkFrameDuration) {
         this.frameWpx = frameWpx;
         this.frameHpx = frameHpx;
@@ -115,12 +133,12 @@ public class GestorEnemigos {
     }
 
     public void setStats(float velocidad, int vida) {
-        this.velocidad = velocidad;
-        this.vida = vida;
+        this.serpVelocidad = velocidad;
+        this.serpVida = vida;
     }
 
     public void setSpawnConfig(float interval, int maxSerpientes, float spawnMinX, float spawnMaxX, float patrolHalfRange) {
-        this.spawnInterval = Math.max(0.1f, interval);
+        this.spawnIntervalS = Math.max(0.1f, interval);
         this.maxSerpientes = Math.max(1, maxSerpientes);
         this.spawnMinX = Math.min(spawnMinX, spawnMaxX);
         this.spawnMaxX = Math.max(spawnMinX, spawnMaxX);
@@ -146,6 +164,7 @@ public class GestorEnemigos {
         this.venenoH = Math.max(0.10f, venenoH);
     }
 
+    // Pájaro
     public void setPajaroSizeWorld(float w, float h) {
         this.pajaroWWorld = Math.max(0.1f, w);
         this.pajaroHWorld = Math.max(0.1f, h);
@@ -178,31 +197,58 @@ public class GestorEnemigos {
         this.pajaroCdContacto = Math.max(0.05f, cdContacto);
     }
 
-    public void update(float delta) {
+    // Golem
+    public void setGolemTextures(Texture idle, Texture walk,
+                                 Texture throwTex, Texture attack, Texture death) {
+        this.golemIdle = idle;
+        this.golemWalk = walk;
+        this.golemThrow = throwTex;
+        this.golemAttack = attack;
+        this.golemDeath = death;
+    }
 
+    public void setRocaRegion(TextureRegion rocaRegion) {
+        this.rocaRegion = rocaRegion;
+    }
+
+    public void setGolemSpawnConfig(float interval, int maxGolems, float minX, float maxX) {
+        this.spawnIntervalG = Math.max(0.1f, interval);
+        this.maxGolems = Math.max(1, maxGolems);
+        this.golemSpawnMinX = Math.min(minX, maxX);
+        this.golemSpawnMaxX = Math.max(minX, maxX);
+    }
+
+    public void update(float delta) {
         for (int i = serpientes.size - 1; i >= 0; i--) {
             Serpiente s = serpientes.get(i);
             s.update(delta);
             if (s.isEliminar()) serpientes.removeIndex(i);
         }
 
-        spawnTimer += delta;
-        if (spawnTimer >= spawnInterval) {
-            spawnTimer -= spawnInterval;
+        spawnTimerS += delta;
+        while (spawnTimerS >= spawnIntervalS) {
+            spawnTimerS -= spawnIntervalS;
             if (serpientes.size < maxSerpientes) spawnSerpiente();
+            else break;
         }
 
         for (int i = pajaros.size - 1; i >= 0; i--) {
             if (pajaros.get(i).isEliminar()) pajaros.removeIndex(i);
         }
-
         spawnTimerP += delta;
+
+        for (int i = golems.size - 1; i >= 0; i--) {
+            if (golems.get(i).isEliminar()) golems.removeIndex(i);
+        }
+        spawnTimerG += delta;
     }
 
     public void updateAtaques(float delta, Jugador jugador, float ppu, float camLeftX, float viewW) {
 
         Rectangle hbJugador = jugador.getHitbox(ppu);
+        float rightX = camLeftX + viewW;
 
+        // Serpientes
         for (Serpiente s : serpientes) {
             s.tryMordiscoJugador(jugador, hbJugador);
 
@@ -211,8 +257,6 @@ public class GestorEnemigos {
                 if (v != null) venenos.add(v);
             }
         }
-
-        float rightX = camLeftX + viewW;
 
         for (int i = venenos.size - 1; i >= 0; i--) {
             ProyectilVeneno v = venenos.get(i);
@@ -229,6 +273,7 @@ public class GestorEnemigos {
             }
         }
 
+        // Pájaros spawn + update
         while (spawnTimerP >= spawnIntervalP) {
             spawnTimerP -= spawnIntervalP;
             if (pajaros.size < maxPajaros) spawnPajaro(camLeftX, viewW, jugador);
@@ -244,6 +289,44 @@ public class GestorEnemigos {
             p.update(delta);
             p.tryDanioContacto(jugador, hbJugador);
         }
+
+        // Golems spawn
+        boolean golemReady =
+            (golemIdle != null && golemWalk != null && golemThrow != null
+                && golemAttack != null && golemDeath != null && rocaRegion != null);
+
+        if (golemReady) {
+            while (spawnTimerG >= spawnIntervalG) {
+                spawnTimerG -= spawnIntervalG;
+                if (golems.size < maxGolems) spawnGolem();
+                else break;
+            }
+        }
+
+        // Update golems + rocas
+        for (Golem g : golems) {
+            g.update(delta, jugador);
+
+            ProyectilRoca roca = g.tryThrow();
+            if (roca != null) rocas.add(roca);
+        }
+
+        for (int i = rocas.size - 1; i >= 0; i--) {
+            ProyectilRoca r = rocas.get(i);
+            r.update(delta);
+
+            if (r.isEliminar()
+                || r.isOutOfRange(camLeftX - 2f, rightX + 2f)
+                || r.isBelow(ySuelo)) {
+                rocas.removeIndex(i);
+                continue;
+            }
+
+            if (r.getHitbox().overlaps(hbJugador)) {
+                jugador.recibirDanio(r.getDamage());
+                r.marcarEliminar();
+            }
+        }
     }
 
     private void spawnSerpiente() {
@@ -255,8 +338,8 @@ public class GestorEnemigos {
         Serpiente s = new Serpiente(
             x, ySuelo,
             pMin, pMax,
-            velocidad,
-            vida,
+            serpVelocidad,
+            serpVida,
             serpienteWalk, frameWpx, frameHpx, walkFrameDuration,
             serpienteDeath,
             ppu,
@@ -297,17 +380,47 @@ public class GestorEnemigos {
         pajaros.add(p);
     }
 
-    public void render(SpriteBatch batch, float camLeftX, float viewW) {
+    private void spawnGolem() {
+        float x = MathUtils.random(golemSpawnMinX, golemSpawnMaxX);
 
+        Golem g = new Golem(
+            x,
+            ySuelo,
+            golemIdle,
+            golemWalk,
+            golemThrow,
+            golemAttack,
+            golemDeath,
+            rocaRegion,
+            ppu
+        );
+
+        golems.add(g);
+    }
+
+    public void render(SpriteBatch batch, float camLeftX, float viewW) {
         for (Serpiente s : serpientes) s.render(batch, camLeftX, viewW);
         for (Pajaro p : pajaros) p.render(batch, camLeftX, viewW);
 
         float rightX = camLeftX + viewW;
+
+        for (Golem g : golems) {
+            Rectangle hb = g.getHitbox();
+            if (hb.x + hb.width < camLeftX - 2f || hb.x > rightX + 2f) continue;
+            g.render(batch);
+        }
+
         for (ProyectilVeneno v : venenos) {
             if (!v.isOutOfRange(camLeftX - 2f, rightX + 2f)) v.draw(batch);
+        }
+
+        for (ProyectilRoca r : rocas) {
+            if (!r.isOutOfRange(camLeftX - 2f, rightX + 2f) && !r.isBelow(ySuelo)) r.draw(batch);
         }
     }
 
     public Array<Serpiente> getSerpientes() { return serpientes; }
     public Array<Pajaro> getPajaros() { return pajaros; }
+    public Array<Golem> getGolems() { return golems; }
+    public Array<ProyectilRoca> getRocas() { return rocas; }
 }

@@ -6,6 +6,8 @@ import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.Texture.TextureWrap;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
@@ -14,6 +16,7 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import io.github.some_example_name.Main;
 import io.github.some_example_name.entidades.efectos.GestorEfectos;
 import io.github.some_example_name.entidades.enemigos.GestorEnemigos;
+import io.github.some_example_name.entidades.enemigos.Golem;
 import io.github.some_example_name.entidades.enemigos.Pajaro;
 import io.github.some_example_name.entidades.enemigos.Serpiente;
 import io.github.some_example_name.entidades.jugador.Jugador;
@@ -59,12 +62,28 @@ public class PantallaJuego extends ScreenAdapter {
     private Texture pajaroAttak;
     private Texture pajaroDeath;
 
+    // GOLEM sheets finales (ya recortados a 128x160)
+    private Texture golemIdle;
+    private Texture golemWalk;
+    private Texture golemAttack;
+    private Texture golemThrow;
+    private Texture golemDeath;
+
+    // Roca
+    private Texture rocaTex;
+    private TextureRegion rocaRegion;
+
     private VenenoAssets venenoAssets;
 
     private final Color colorImpactoNormal = new Color(1f, 0.6f, 0.15f, 1f);
 
     public PantallaJuego(Main juego) {
         this.juego = juego;
+    }
+
+    private void setPixelArt(Texture t) {
+        t.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        t.setWrap(TextureWrap.ClampToEdge, TextureWrap.ClampToEdge);
     }
 
     @Override
@@ -90,17 +109,54 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEfectos = new GestorEfectos(impactoAssets.impacto);
         gestorEfectos.setImpactoConfig(0.55f, 0.55f, 0.14f);
 
+        // Serpiente
         serpienteWalk = new Texture("sprites/enemigos/serpiente/serpiente_walk.png");
         serpienteDeath = new Texture("sprites/enemigos/serpiente/serpiente_death.png");
-        serpienteWalk.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        serpienteDeath.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        setPixelArt(serpienteWalk);
+        setPixelArt(serpienteDeath);
 
+        // Pájaro
         pajaroAttak = new Texture("sprites/enemigos/pajaro/pajaro_attack.png");
         pajaroDeath = new Texture("sprites/enemigos/pajaro/pajaro_dead.png");
-        pajaroAttak.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        pajaroDeath.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        setPixelArt(pajaroAttak);
+        setPixelArt(pajaroDeath);
+
+        // GOLEM (IMPORTANTE: aquí cargamos SOLO sheets finales)
+        golemIdle   = new Texture("sprites/enemigos/golem/idle_sheet.png");
+        golemWalk   = new Texture("sprites/enemigos/golem/walk_sheet.png");
+        golemThrow  = new Texture("sprites/enemigos/golem/throw_sheet.png");
+        golemAttack = new Texture("sprites/enemigos/golem/attack_sheet.png");
+        golemDeath  = new Texture("sprites/enemigos/golem/death_sheet.png");
+
+        setPixelArt(golemIdle);
+        setPixelArt(golemWalk);
+        setPixelArt(golemThrow);
+        setPixelArt(golemAttack);
+        setPixelArt(golemDeath);
+
+        // Roca
+        rocaTex = new Texture("sprites/proyectiles/enemigo/golem_roca.png");
+        setPixelArt(rocaTex);
+        rocaRegion = new TextureRegion(rocaTex);
 
         gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
+
+        // Golem textures (sin TURN)
+        gestorEnemigos.setGolemTextures(
+            golemIdle,
+            golemWalk,
+            golemThrow,
+            golemAttack,
+            golemDeath
+        );
+        gestorEnemigos.setRocaRegion(rocaRegion);
+
+        gestorEnemigos.setGolemSpawnConfig(
+            4.0f,
+            2,
+            10f,
+            anchoNivel - 10f
+        );
 
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
@@ -207,11 +263,7 @@ public class PantallaJuego extends ScreenAdapter {
 
             if (disparaNormal) {
                 float syNormal = sy - NORMAL_STAND;
-
-                if (agacharse) {
-                    syNormal -= NORMAL_CROUCH;
-                }
-
+                if (agacharse) syNormal -= NORMAL_CROUCH;
                 gestorProyectiles.shootNormal(sx, syNormal, derechaDisparo);
             }
 
@@ -219,10 +271,7 @@ public class PantallaJuego extends ScreenAdapter {
                 float viewH = viewport.getWorldHeight();
 
                 float syEspecial = sy + SPECIAL_STAND;
-
-                if (agacharse) {
-                    syEspecial -= SPECIAL_CROUCH;
-                }
+                if (agacharse) syEspecial -= SPECIAL_CROUCH;
 
                 gestorProyectiles.startEspecial(sx, syEspecial, derechaDisparo, viewH);
             }
@@ -248,6 +297,7 @@ public class PantallaJuego extends ScreenAdapter {
 
         gestorEfectos.update(delta);
 
+        // Colisiones balas normales
         for (Serpiente s : gestorEnemigos.getSerpientes()) {
             if (s.isDead()) continue;
 
@@ -262,7 +312,6 @@ public class PantallaJuego extends ScreenAdapter {
                     float cy = hb.y + hb.height * 0.5f;
 
                     float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
-
                     float avance = 0.10f;
                     float shift = (p.getVx() >= 0f) ? avance : -avance;
 
@@ -287,7 +336,6 @@ public class PantallaJuego extends ScreenAdapter {
                     float cy = hb.y + hb.height * 0.5f;
 
                     float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
-
                     float avance = 0.10f;
                     float shift = (p.getVx() >= 0f) ? avance : -avance;
 
@@ -298,22 +346,48 @@ public class PantallaJuego extends ScreenAdapter {
             }
         }
 
+        for (Golem g : gestorEnemigos.getGolems()) {
+            if (g.isDead()) continue;
+
+            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
+                Proyectil p = gestorProyectiles.getNormales().get(i);
+                if (p.isEliminar()) continue;
+
+                if (g.getHitbox().overlaps(p.getHitbox())) {
+                    g.recibirDanio(p.getDamage());
+
+                    Rectangle hb = p.getHitbox();
+                    float cy = hb.y + hb.height * 0.5f;
+
+                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
+                    float avance = 0.10f;
+                    float shift = (p.getVx() >= 0f) ? avance : -avance;
+
+                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
+
+                    p.marcarEliminar();
+                }
+            }
+        }
+
+        // Rayo especial
         AtaqueEspecial esp = gestorProyectiles.getEspecial();
         if (esp != null) {
             Rectangle hbRayo = esp.getHitbox();
             if (hbRayo != null) {
                 for (Serpiente s : gestorEnemigos.getSerpientes()) {
                     if (s.isDead()) continue;
-                    if (s.getHitbox().overlaps(hbRayo)) {
-                        s.recibirDanio(esp.getDamage());
-                    }
+                    if (s.getHitbox().overlaps(hbRayo)) s.recibirDanio(esp.getDamage());
                 }
 
                 for (Pajaro b : gestorEnemigos.getPajaros()) {
                     if (b.isDead()) continue;
-                    if (b.getHitbox(PPU).overlaps(hbRayo)) {
-                        b.recibirDanio(esp.getDamage());
-                    }
+                    if (b.getHitbox(PPU).overlaps(hbRayo)) b.recibirDanio(esp.getDamage());
+                }
+
+                for (Golem g : gestorEnemigos.getGolems()) {
+                    if (g.isDead()) continue;
+                    if (g.getHitbox().overlaps(hbRayo)) g.recibirDanio(esp.getDamage());
                 }
             }
         }
@@ -341,6 +415,14 @@ public class PantallaJuego extends ScreenAdapter {
 
         if (pajaroAttak != null) pajaroAttak.dispose();
         if (pajaroDeath != null) pajaroDeath.dispose();
+
+        if (golemIdle != null) golemIdle.dispose();
+        if (golemWalk != null) golemWalk.dispose();
+        if (golemThrow != null) golemThrow.dispose();
+        if (golemAttack != null) golemAttack.dispose();
+        if (golemDeath != null) golemDeath.dispose();
+
+        if (rocaTex != null) rocaTex.dispose();
 
         if (venenoAssets != null) venenoAssets.dispose();
     }

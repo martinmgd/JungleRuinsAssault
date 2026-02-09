@@ -8,12 +8,12 @@ import com.badlogic.gdx.utils.Disposable;
 public class DisparoAssets implements Disposable {
 
     // Normal (3 frames en una sola fila)
-    public static final String PATH_NORMAL_SHEET = "sprites/projectiles/fireball_sheet.png";
+    public static final String PATH_NORMAL_SHEET = "sprites/proyectiles/fireball_sheet.png";
     public static final int NORMAL_FRAMES = 3;
     public static final float NORMAL_FRAME_TIME = 0.06f;
 
     // Especial: 12 frames en una sola fila
-    public static final String PATH_SPECIAL_SHEET = "sprites/projectiles/special_sheet.png";
+    public static final String PATH_SPECIAL_SHEET = "sprites/proyectiles/special_sheet.png";
     public static final int SPECIAL_TOTAL_FRAMES = 12;
 
     // Reparto dentro del sheet especial:
