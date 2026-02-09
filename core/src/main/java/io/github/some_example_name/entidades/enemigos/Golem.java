@@ -12,8 +12,11 @@ import io.github.some_example_name.entidades.proyectiles.enemigos.ProyectilRoca;
 
 public class Golem {
 
-    private enum Estado { IDLE, WALK, THROW, ATTACK, DEAD }
+    private enum Estado { IDLE, WALK, THROW, ATTACK, DYING }
     private Estado estado = Estado.IDLE;
+
+    private static final float SCALE_W = 1.6f;
+    private static final float SCALE_H = 1.2f;
 
     private float x, y;
     private float vx;
@@ -48,13 +51,7 @@ public class Golem {
     private final Animation<TextureRegion> walk;
     private final Animation<TextureRegion> throwAnim;
     private final Animation<TextureRegion> attack;
-    private final TextureRegion death;
-
-    private float deadTime = 0f;
-    private final float blinkStart  = 0.8f;
-    private final float disappearAt = 1.8f;
-    private final float blinkPeriod = 0.12f;
-    private boolean blinkVisible = true;
+    private final Animation<TextureRegion> deathAnim;
 
     private final TextureRegion rocaRegion;
 
@@ -62,8 +59,8 @@ public class Golem {
     private float rocaVx = 4.0f;
     private float rocaVy = 2.0f;
     private float rocaGravity = -18.0f;
-    private float rocaW = 0.40f;
-    private float rocaH = 0.40f;
+    private float rocaW = 1.5f;
+    private float rocaH = 1.5f;
     private int rocaDamage = 10;
 
     public Golem(
@@ -81,17 +78,14 @@ public class Golem {
         this.y = sueloY;
         this.rocaRegion = rocaRegion;
 
-        this.wWorld = 150f / ppu;
-        this.hWorld = 190f / ppu;
+        this.wWorld = (150f / ppu) * SCALE_W;
+        this.hWorld = (190f / ppu) * SCALE_H;
 
-        idle     = buildAnimMust(idleTex,  "idle");
-        walk     = buildAnimMust(walkTex,  "walk");
-        throwAnim= buildAnimMust(throwTex, "throw");
-        attack   = buildAnimMust(attackTex,"attack");
-
-        // death suele ser sheet también, pero si es 1 frame (128x160) nos vale igual
-        validateSheetOrThrow(deathTex, "death");
-        death = new TextureRegion(deathTex, 0, 0, FW, FH);
+        idle      = buildAnimMust(idleTex,  "idle");
+        walk      = buildAnimMust(walkTex,  "walk");
+        throwAnim = buildAnimMust(throwTex, "throw");
+        attack    = buildAnimMust(attackTex,"attack");
+        deathAnim = buildAnimMust(deathTex, "death");
 
         hitbox.set(x, y, wWorld * 0.6f, hWorld * 0.85f);
     }
@@ -102,13 +96,12 @@ public class Golem {
 
         if (w < FW || h < FH) {
             throw new IllegalArgumentException(
-                "Sheet '" + label + "' demasiado pequeño: " + w + "x" + h + " para frame " + FW + "x" + FH
+                "Sheet '" + label + "' demasiado pequeño: " + w + "x" + h
             );
         }
         if (w % FW != 0 || h % FH != 0) {
             throw new IllegalArgumentException(
-                "Sheet '" + label + "' NO está alineado a grid " + FW + "x" + FH + ": " + w + "x" + h
-                    + " (ancho%FW=" + (w % FW) + ", alto%FH=" + (h % FH) + ")"
+                "Sheet '" + label + "' no alineado a grid " + FW + "x" + FH
             );
         }
     }
@@ -122,16 +115,10 @@ public class Golem {
         Array<TextureRegion> frames = new Array<>(cols * rows);
         TextureRegion base = new TextureRegion(tex);
 
-        // Normalmente será 1 fila, pero esto soporta varias
         for (int r = 0; r < rows; r++) {
             for (int c = 0; c < cols; c++) {
                 frames.add(new TextureRegion(base, c * FW, r * FH, FW, FH));
             }
-        }
-
-        if (frames.size == 0) {
-            throw new IllegalArgumentException("Sheet '" + label + "' no generó frames (0). Tamaño=" +
-                tex.getWidth() + "x" + tex.getHeight());
         }
 
         float frameTime;
@@ -154,6 +141,19 @@ public class Golem {
     public void update(float delta, Jugador jugador) {
         if (eliminar) return;
 
+        // MUERTE: solo animación, sin IA ni movimiento
+        if (estado == Estado.DYING) {
+            stateTime += delta;
+
+            if (deathAnim.isAnimationFinished(stateTime)) {
+                eliminar = true;
+            }
+
+            hitbox.x = x + (wWorld - hitbox.width) * 0.5f;
+            hitbox.y = y;
+            return;
+        }
+
         stateTime += delta;
         tThrow -= delta;
         tAttack -= delta;
@@ -165,7 +165,6 @@ public class Golem {
 
         switch (estado) {
             case IDLE:
-                // 1 frame idle, o anim loop da igual: pasamos a WALK
                 estado = Estado.WALK;
                 stateTime = 0f;
                 break;
@@ -199,19 +198,6 @@ public class Golem {
                     stateTime = 0f;
                 }
                 break;
-
-            case DEAD:
-                deadTime += delta;
-
-                if (deadTime >= blinkStart) {
-                    int phase = (int) ((deadTime - blinkStart) / blinkPeriod);
-                    blinkVisible = (phase % 2) == 0;
-                }
-
-                if (deadTime >= disappearAt) {
-                    eliminar = true;
-                }
-                break;
         }
 
         hitbox.x = x + (wWorld - hitbox.width) * 0.5f;
@@ -226,7 +212,6 @@ public class Golem {
         if (t < 0.45f) return null;
 
         rocaLanzada = true;
-
         float dir = mirandoDerecha ? 1f : -1f;
 
         return new ProyectilRoca(
@@ -243,28 +228,33 @@ public class Golem {
     }
 
     public void recibirDanio(int dmg) {
-        if (estado == Estado.DEAD) return;
+        if (estado == Estado.DYING) return;
 
         vida -= dmg;
         if (vida <= 0) {
             vida = 0;
-            estado = Estado.DEAD;
+            estado = Estado.DYING;
             stateTime = 0f;
-            deadTime = 0f;
+
+            vx = 0f;
+            rocaLanzada = true;
         }
     }
 
     public void render(SpriteBatch batch) {
         if (eliminar) return;
-        if (estado == Estado.DEAD && !blinkVisible) return;
 
         TextureRegion frame;
-        switch (estado) {
-            case WALK:   frame = walk.getKeyFrame(stateTime); break;
-            case THROW:  frame = throwAnim.getKeyFrame(stateTime); break;
-            case ATTACK: frame = attack.getKeyFrame(stateTime); break;
-            case DEAD:   frame = death; break;
-            default:     frame = idle.getKeyFrame(stateTime);
+
+        if (estado == Estado.DYING) {
+            frame = deathAnim.getKeyFrame(stateTime);
+        } else {
+            switch (estado) {
+                case WALK:   frame = walk.getKeyFrame(stateTime); break;
+                case THROW:  frame = throwAnim.getKeyFrame(stateTime); break;
+                case ATTACK: frame = attack.getKeyFrame(stateTime); break;
+                default:     frame = idle.getKeyFrame(stateTime);
+            }
         }
 
         if (mirandoDerecha) {
@@ -276,5 +266,5 @@ public class Golem {
 
     public Rectangle getHitbox() { return hitbox; }
     public boolean isEliminar() { return eliminar; }
-    public boolean isDead() { return estado == Estado.DEAD; }
+    public boolean isDead() { return estado == Estado.DYING; }
 }
