@@ -55,10 +55,11 @@ public class Golem {
 
     private final TextureRegion rocaRegion;
 
-    // Config roca
-    private float rocaVx = 4.0f;
-    private float rocaVy = 2.0f;
-    private float rocaGravity = -18.0f;
+    // Config roca (más alcance)
+    private float rocaVx = 9.5f;
+    private float rocaVy = 2.9f;
+    private float rocaGravity = -16.0f;
+
     private float rocaW = 1.5f;
     private float rocaH = 1.5f;
     private int rocaDamage = 10;
@@ -141,7 +142,6 @@ public class Golem {
     public void update(float delta, Jugador jugador) {
         if (eliminar) return;
 
-        // MUERTE: solo animación, sin IA ni movimiento
         if (estado == Estado.DYING) {
             stateTime += delta;
 
@@ -214,10 +214,14 @@ public class Golem {
         rocaLanzada = true;
         float dir = mirandoDerecha ? 1f : -1f;
 
+        // TU spawn desde la mano (se respeta)
+        float spawnX = x + wWorld * (mirandoDerecha ? 0.75f : 0.25f);
+        float spawnY = y + hWorld * 0.25f;
+
         return new ProyectilRoca(
             rocaRegion,
-            x + wWorld * 0.55f,
-            y + hWorld * 0.65f,
+            spawnX,
+            spawnY,
             dir * rocaVx,
             rocaVy,
             rocaGravity,

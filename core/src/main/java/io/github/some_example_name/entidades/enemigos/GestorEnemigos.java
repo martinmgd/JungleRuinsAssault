@@ -352,23 +352,56 @@ public class GestorEnemigos {
         serpientes.add(s);
     }
 
+    // Spawn pájaro: elige por qué lado SALE y spawnea por el lado contrario (coherente siempre)
     private void spawnPajaro(float camLeftX, float viewW, Jugador jugador) {
-        boolean leftSide = MathUtils.randomBoolean();
 
-        float spawnX = leftSide
-            ? (camLeftX - pajaroSpawnMarginX)
-            : (camLeftX + viewW + pajaroSpawnMarginX);
+        boolean salePorDerecha = MathUtils.randomBoolean();
+
+        float exitX;
+        float spawnX;
+
+        if (salePorDerecha) {
+            exitX = camLeftX + viewW + pajaroSpawnMarginX; // sale por derecha
+            spawnX = camLeftX - pajaroSpawnMarginX;        // spawnea por izquierda
+        } else {
+            exitX = camLeftX - pajaroSpawnMarginX;         // sale por izquierda
+            spawnX = camLeftX + viewW + pajaroSpawnMarginX;// spawnea por derecha
+        }
+
+        float hJ = jugador.getHeight(ppu);
+
+        // Spawn más bajo en el lateral (no arriba)
+        float spawnYTop = pajaroYTop - 6.5f;
+        spawnYTop = Math.max(spawnYTop, ySuelo + 2.0f);
+
+        // Cabeza/cuerpo random
+        boolean aCabeza = MathUtils.randomBoolean();
+        float passY = aCabeza
+            ? (jugador.getY() + hJ * 0.85f)
+            : (jugador.getY() + hJ * 0.55f);
+
+        // No apuntar demasiado arriba
+        passY = Math.min(passY, spawnYTop - 1.0f);
+
+        // X del giro cerca del jugador (no pegado al borde)
+        float margen = 2.0f;
+        float turnX = MathUtils.clamp(jugador.getX(), camLeftX + margen, camLeftX + viewW - margen);
+
+        float crossTime = 1.7f;
 
         Pajaro p = new Pajaro(
             spawnX,
-            pajaroYTop,
+            spawnYTop,
             ySuelo,
             pajaroDiveSpeed,
+            exitX,
+            turnX,
+            passY,
+            crossTime,
             pajaroAttak,
             pajaroDeath,
             ppu,
-            yOffsetWorld,
-            jugador
+            yOffsetWorld
         );
 
         p.setAtaqueContacto(pajaroDmgContacto, pajaroCdContacto);

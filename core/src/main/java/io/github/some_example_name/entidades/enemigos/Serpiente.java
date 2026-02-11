@@ -67,6 +67,15 @@ public class Serpiente {
     private float venenoW;
     private float venenoH;
 
+    // Guardamos sueloY real para poder eliminar el veneno al caer
+    private float sueloY = 2f;
+
+    // Veneno con la física de la roca del golem (PARÁBOLA + ALCANCE).
+    // Si cambias la roca en Golem, dime los valores y los igualamos aquí.
+    private static final float VENENO_VX = 9.5f;       // mismo tipo que roca (más lejos)
+    private static final float VENENO_VY = 2.9f;
+    private static final float VENENO_GRAVITY = -16.0f;
+
     public Serpiente(
         float x, float sueloY,
         float minX, float maxX,
@@ -79,6 +88,8 @@ public class Serpiente {
     ) {
         this.x = x;
         this.yOffsetWorld = yOffsetWorld;
+
+        this.sueloY = sueloY;
         this.y = sueloY + yOffsetWorld;
 
         this.minX = minX;
@@ -121,9 +132,10 @@ public class Serpiente {
     }
 
     public void setSueloY(float sueloY) {
-        if (estado == Estado.DEAD) {
-            return;
-        }
+        if (estado == Estado.DEAD) return;
+
+        this.sueloY = sueloY;
+
         y = sueloY + yOffsetWorld;
         hitbox.y = y;
     }
@@ -199,14 +211,25 @@ public class Serpiente {
         float dir = Math.signum(jx - cx);
         tVeneno = cdVeneno;
 
+        // Sale desde la boca/centro (igual que antes)
+        float spawnX = cx;
+        float spawnY = y + hWorld * 0.5f;
+
+        // Misma parábola que la roca: vx/vy/gravedad fijos para igualar alcance
+        float vxVen = dir * VENENO_VX;
+        float vyVen = VENENO_VY;
+
         return new ProyectilVeneno(
             region,
-            cx,
-            y + hWorld * 0.5f,
-            dir * velVeneno,
+            spawnX,
+            spawnY,
+            vxVen,
+            vyVen,
+            VENENO_GRAVITY,
             venenoW,
             venenoH,
-            dmgVeneno
+            dmgVeneno,
+            sueloY  // para auto-eliminar cuando caiga
         );
     }
 

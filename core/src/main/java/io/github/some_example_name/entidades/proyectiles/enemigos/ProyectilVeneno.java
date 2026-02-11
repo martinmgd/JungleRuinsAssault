@@ -11,10 +11,13 @@ public class ProyectilVeneno {
     private float x;
     private float y;
 
-    private final float vx;
+    private float vx;
+    private float vy;
 
-    private final float w;
-    private final float h;
+    private float gravity;
+
+    private float w;
+    private float h;
 
     private final int damage;
 
@@ -22,29 +25,66 @@ public class ProyectilVeneno {
 
     private boolean eliminar = false;
 
+    // Si sueloYForKill es NaN, no auto-elimina por suelo
+    private final float sueloYForKill;
+
+    // Constructor antiguo (compatibilidad total): veneno recto como antes
     public ProyectilVeneno(TextureRegion region,
                            float x, float y,
                            float vx,
                            float w, float h,
                            int damage) {
+        this(region, x, y, vx, 0f, 0f, w, h, damage, Float.NaN);
+    }
+
+    // Constructor nuevo: veneno en parábola (tipo roca)
+    public ProyectilVeneno(TextureRegion region,
+                           float x, float y,
+                           float vx, float vy,
+                           float gravity,
+                           float w, float h,
+                           int damage,
+                           float sueloYForKill) {
         this.region = region;
+
         this.x = x;
         this.y = y;
+
         this.vx = vx;
+        this.vy = vy;
+        this.gravity = gravity;
+
         this.w = w;
         this.h = h;
+
         this.damage = damage;
+        this.sueloYForKill = sueloYForKill;
 
         hitbox.set(x, y, w, h);
     }
 
     public void update(float delta) {
+        if (eliminar) return;
+
+        // Física parabólica (si gravity != 0 o vy != 0)
+        vy += gravity * delta;
+
         x += vx * delta;
+        y += vy * delta;
+
         hitbox.x = x;
         hitbox.y = y;
+
+        // Auto-eliminar al caer bajo el suelo (sin tocar GestorEnemigos)
+        if (!Float.isNaN(sueloYForKill)) {
+            if ((y + h) < sueloYForKill) {
+                eliminar = true;
+            }
+        }
     }
 
     public void draw(SpriteBatch batch) {
+        if (eliminar) return;
         batch.draw(region, x, y, w, h);
     }
 
@@ -66,5 +106,27 @@ public class ProyectilVeneno {
 
     public boolean isEliminar() {
         return eliminar;
+    }
+
+    // Opcional por si ajustas luego
+    public float getX() { return x; }
+    public float getY() { return y; }
+    public float getVx() { return vx; }
+    public float getVy() { return vy; }
+
+    public void setVel(float vx, float vy) {
+        this.vx = vx;
+        this.vy = vy;
+    }
+
+    public void setGravity(float gravity) {
+        this.gravity = gravity;
+    }
+
+    public void setSize(float w, float h) {
+        this.w = w;
+        this.h = h;
+        hitbox.width = w;
+        hitbox.height = h;
     }
 }

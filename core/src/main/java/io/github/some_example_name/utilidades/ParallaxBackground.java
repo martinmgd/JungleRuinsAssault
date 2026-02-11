@@ -6,58 +6,83 @@ import com.badlogic.gdx.utils.Disposable;
 
 public class ParallaxBackground implements Disposable {
 
-    private final Texture bgTex;
-    private final Texture midTex;
-    private final Texture fgTex;
+    private final Texture[] layers;
+    private final float[] factors;
 
-    private final float bgFactor  = 0.25f;
-    private final float midFactor = 0.55f;
-    private final float fgFactor  = 1.0f;
+    private float zoom = 1.0f;
 
-    private float zoom = 1.25f;
+    private final float[] drawW;
+    private final float[] drawH;
+    private final float[] layerY;
 
-    private float bgDrawW, bgDrawH;
-    private float midDrawW, midDrawH;
-    private float fgDrawW, fgDrawH;
-
-    private float bgY, midY, fgY;
-
-    private final float midOverlapPx = 48f;
-
+    // Ajuste de "suelo" dentro del FG
     private float groundFrac = 0.44f;
 
+    // Se mantiene para no alterar demasiado tu lógica previa
     private final float actionBottomExtra = 0.25f;
 
     public ParallaxBackground(String bgPath, String midPath, String fgPath) {
-        bgTex = new Texture(bgPath);
-        midTex = new Texture(midPath);
-        fgTex = new Texture(fgPath);
+        this.layers = new Texture[] {
+            new Texture(bgPath),
+            new Texture(midPath),
+            new Texture(fgPath)
+        };
+
+        this.factors = new float[] { 0.25f, 0.55f, 1.0f };
+
+        this.drawW = new float[layers.length];
+        this.drawH = new float[layers.length];
+        this.layerY = new float[layers.length];
+    }
+
+    public ParallaxBackground(String bgPath, String midPath, String nearPath, String fgPath) {
+        this.layers = new Texture[] {
+            new Texture(bgPath),
+            new Texture(midPath),
+            new Texture(nearPath),
+            new Texture(fgPath)
+        };
+
+        // Factores para 4 capas (puedes afinarlos si quieres)
+        this.factors = new float[] { 0.18f, 0.40f, 0.70f, 1.0f };
+
+        this.drawW = new float[layers.length];
+        this.drawH = new float[layers.length];
+        this.layerY = new float[layers.length];
     }
 
     public void resize(float worldW, float worldH) {
-        float scale = (worldH / bgTex.getHeight()) * zoom;
+        if (layers.length == 0) return;
 
-        bgDrawW = bgTex.getWidth() * scale;
-        bgDrawH = bgTex.getHeight() * scale;
+        // Escalamos usando la altura del BG como referencia
+        float scale = (worldH / layers[0].getHeight()) * zoom;
 
-        midDrawW = midTex.getWidth() * scale;
-        midDrawH = midTex.getHeight() * scale;
+        for (int i = 0; i < layers.length; i++) {
+            drawW[i] = layers[i].getWidth() * scale;
+            drawH[i] = layers[i].getHeight() * scale;
+        }
 
-        fgDrawW = fgTex.getWidth() * scale;
-        fgDrawH = fgTex.getHeight() * scale;
+        if (layers.length == 3) {
+            // Comportamiento anterior: BG centrado, MID abajo, FG abajo.
+            layerY[0] = (worldH - drawH[0]) * 0.5f;
+            layerY[1] = (worldH - drawH[1]) + 0.2f;
+            layerY[2] = Math.min(0f, worldH - drawH[2]) - actionBottomExtra;
+        } else {
+            // Nuevo comportamiento para 4 capas:
+            // Capas 0/1/2 ancladas arriba para evitar que "asomen" huecos en la parte superior.
+            layerY[0] = worldH - drawH[0];
+            layerY[1] = worldH - drawH[1];
+            layerY[2] = worldH - drawH[2];
 
-        bgY = (worldH - bgDrawH) * 0.5f;
-
-        float overlapWorld = midOverlapPx * scale;
-        midY = (worldH - midDrawH) + 0.2f - overlapWorld;
-
-        fgY = Math.min(0f, worldH - fgDrawH) - actionBottomExtra;
+            // FG anclado abajo como antes (suelo)
+            layerY[3] = Math.min(0f, worldH - drawH[3]) - actionBottomExtra;
+        }
     }
 
     public void render(SpriteBatch batch, float cameraLeftX, float viewW) {
-        drawTiled(batch, bgTex,  bgY,  bgDrawW,  bgDrawH,  cameraLeftX, viewW, bgFactor);
-        drawTiled(batch, midTex, midY, midDrawW, midDrawH, cameraLeftX, viewW, midFactor);
-        drawTiled(batch, fgTex,  fgY,  fgDrawW,  fgDrawH,  cameraLeftX, viewW, fgFactor);
+        for (int i = 0; i < layers.length; i++) {
+            drawTiled(batch, layers[i], layerY[i], drawW[i], drawH[i], cameraLeftX, viewW, factors[i]);
+        }
     }
 
     private void drawTiled(SpriteBatch batch, Texture tex,
@@ -76,7 +101,8 @@ public class ParallaxBackground implements Disposable {
     }
 
     public float getGroundY() {
-        return fgY + fgDrawH * groundFrac;
+        int fgIndex = layers.length - 1;
+        return layerY[fgIndex] + drawH[fgIndex] * groundFrac;
     }
 
     public float getGroundFrac() {
@@ -91,10 +117,15 @@ public class ParallaxBackground implements Disposable {
         this.zoom = zoom;
     }
 
+    public void setFactors(float... newFactors) {
+        if (newFactors == null || newFactors.length != factors.length) return;
+        System.arraycopy(newFactors, 0, factors, 0, factors.length);
+    }
+
     @Override
     public void dispose() {
-        bgTex.dispose();
-        midTex.dispose();
-        fgTex.dispose();
+        for (Texture t : layers) {
+            if (t != null) t.dispose();
+        }
     }
 }

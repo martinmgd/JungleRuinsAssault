@@ -40,7 +40,10 @@ public class PantallaJuego extends ScreenAdapter {
     private PlayerAnimations anims;
     private Jugador jugador;
 
-    private float anchoNivel = 50f;
+    // Nivel más largo para dar sensación de recorrido
+    // (el fondo tilea y con esto no “se acaba” el mundo)
+    private float anchoNivel = 400f;
+
     private float limiteIzq;
     private float limiteDer;
 
@@ -62,20 +65,28 @@ public class PantallaJuego extends ScreenAdapter {
     private Texture pajaroAttak;
     private Texture pajaroDeath;
 
-    // GOLEM sheets finales (ya recortados a 128x160)
     private Texture golemIdle;
     private Texture golemWalk;
     private Texture golemAttack;
     private Texture golemThrow;
     private Texture golemDeath;
 
-    // Roca
     private Texture rocaTex;
     private TextureRegion rocaRegion;
 
     private VenenoAssets venenoAssets;
 
     private final Color colorImpactoNormal = new Color(1f, 0.6f, 0.15f, 1f);
+
+    // Valores finales que calibraste
+    private static final float GROUND_FRAC_FINAL = 0.45f;
+    private static final float AJUSTE_SUELO_FINAL = -4.7f;
+
+    // Offset que se aplica al suelo (se recalcula en resize para mantener el suelo objetivo)
+    private float ajusteSueloY = AJUSTE_SUELO_FINAL;
+
+    // Suelo objetivo en coordenadas de mundo (se fija una vez y luego se mantiene)
+    private float sueloObjetivoY = 0f;
 
     public PantallaJuego(Main juego) {
         this.juego = juego;
@@ -84,6 +95,34 @@ public class PantallaJuego extends ScreenAdapter {
     private void setPixelArt(Texture t) {
         t.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         t.setWrap(TextureWrap.ClampToEdge, TextureWrap.ClampToEdge);
+    }
+
+    private float getSueloY() {
+        return parallax.getGroundY() + ajusteSueloY;
+    }
+
+    // Recalcula ajusteSueloY para mantener el mismo sueloObjetivoY aunque cambie parallax.getGroundY() tras resize
+    private void recalcularAjusteSueloParaMantenerObjetivo() {
+        ajusteSueloY = sueloObjetivoY - parallax.getGroundY();
+    }
+
+    // Evita que el jugador se salga del nivel (izquierda/derecha)
+    private void clampJugadorEnNivel() {
+        float playerW = jugador.getWidth(PPU);
+
+        float minX = 0f;
+        float maxX = anchoNivel - playerW;
+
+        if (maxX < minX) {
+            // Por si algún día anchoNivel fuese más pequeño que el jugador
+            maxX = minX;
+        }
+
+        float x = jugador.getX();
+        if (x < minX) x = minX;
+        if (x > maxX) x = maxX;
+
+        jugador.setX(x);
     }
 
     @Override
@@ -96,11 +135,19 @@ public class PantallaJuego extends ScreenAdapter {
         jugador = new Jugador(anims);
 
         parallax = new ParallaxBackground(
-            "sprites/fondos/CapaFondo.png",
-            "sprites/fondos/CapaIntermedia3.png",
-            "sprites/fondos/fondoAccion2_niveles.png"
+            "sprites/fondos/capa_01.png",
+            "sprites/fondos/capa_02.png",
+            "sprites/fondos/capa_03.png",
+            "sprites/fondos/capa_04.png"
         );
+
+        parallax.setZoom(1.0f);
+        parallax.setGroundFrac(GROUND_FRAC_FINAL);
         parallax.resize(viewport.getWorldWidth(), viewport.getWorldHeight());
+
+        // Fijamos una vez el suelo objetivo usando tu calibración final
+        sueloObjetivoY = parallax.getGroundY() + AJUSTE_SUELO_FINAL;
+        recalcularAjusteSueloParaMantenerObjetivo();
 
         disparoAssets = new DisparoAssets();
         gestorProyectiles = new GestorProyectiles(disparoAssets);
@@ -121,7 +168,7 @@ public class PantallaJuego extends ScreenAdapter {
         setPixelArt(pajaroAttak);
         setPixelArt(pajaroDeath);
 
-        // GOLEM (IMPORTANTE: aquí cargamos SOLO sheets finales)
+        // Golem
         golemIdle   = new Texture("sprites/enemigos/golem/idle_sheet.png");
         golemWalk   = new Texture("sprites/enemigos/golem/walk_sheet.png");
         golemThrow  = new Texture("sprites/enemigos/golem/throw_sheet.png");
@@ -141,7 +188,6 @@ public class PantallaJuego extends ScreenAdapter {
 
         gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
 
-        // Golem textures (sin TURN)
         gestorEnemigos.setGolemTextures(
             golemIdle,
             golemWalk,
@@ -165,11 +211,14 @@ public class PantallaJuego extends ScreenAdapter {
         camara.position.set(viewW / 2f, viewport.getWorldHeight() / 2f, 0f);
         camara.update();
 
+        // Colocación inicial ya con suelo fijo
         jugador.setX(viewW / 2f);
-        jugador.setSueloY(parallax.getGroundY());
-        jugador.setY(parallax.getGroundY());
+        jugador.setSueloY(getSueloY());
+        jugador.setY(getSueloY());
 
-        gestorEnemigos.setYsuelo(parallax.getGroundY());
+        clampJugadorEnNivel();
+
+        gestorEnemigos.setYsuelo(getSueloY());
         gestorEnemigos.setAnimacion(128, 80, 0.20f);
         gestorEnemigos.setStats(2.0f, 10);
         gestorEnemigos.setSpawnConfig(
@@ -181,8 +230,7 @@ public class PantallaJuego extends ScreenAdapter {
         );
         gestorEnemigos.setYOffsetWorld(0.15f);
 
-        float yTopPantalla = parallax.getGroundY() + viewport.getWorldHeight() + 0.5f;
-
+        float yTopPantalla = getSueloY() + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(
             2.4f,
             2,
@@ -202,19 +250,34 @@ public class PantallaJuego extends ScreenAdapter {
 
     @Override
     public void resize(int width, int height) {
+        // Guardamos el suelo actual antes de recalcular, para recolocar al jugador sin “caída”
+        float sueloAntes = (parallax != null) ? getSueloY() : 0f;
+
         viewport.update(width, height, true);
 
         if (parallax != null) {
             parallax.resize(viewport.getWorldWidth(), viewport.getWorldHeight());
+
+            // Mantenemos el MISMO suelo objetivo tras el resize
+            recalcularAjusteSueloParaMantenerObjetivo();
         }
 
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
 
-        gestorEnemigos.setYsuelo(parallax.getGroundY());
+        // Recoloca jugador al nuevo suelo manteniendo estabilidad
+        float sueloDespues = getSueloY();
+        float deltaSuelo = sueloDespues - sueloAntes;
 
-        float yTopPantalla = parallax.getGroundY() + viewport.getWorldHeight() + 0.5f;
+        jugador.setSueloY(sueloDespues);
+        jugador.setY(jugador.getY() + deltaSuelo);
+
+        clampJugadorEnNivel();
+
+        gestorEnemigos.setYsuelo(sueloDespues);
+
+        float yTopPantalla = sueloDespues + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(
             2.4f,
             2,
@@ -245,8 +308,13 @@ public class PantallaJuego extends ScreenAdapter {
         boolean disparaNormal = Gdx.input.isKeyJustPressed(Input.Keys.J);
         boolean disparaEspecial = Gdx.input.isKeyJustPressed(Input.Keys.K);
 
-        jugador.setSueloY(parallax.getGroundY());
+        jugador.setSueloY(getSueloY());
         jugador.aplicarEntrada(dir, saltar, agacharse, delta);
+
+        // Importante: después de mover, cerramos al nivel
+        clampJugadorEnNivel();
+
+        gestorEnemigos.setYsuelo(getSueloY());
 
         if (disparaNormal || disparaEspecial) {
 
@@ -293,11 +361,22 @@ public class PantallaJuego extends ScreenAdapter {
         gestorProyectiles.update(delta, cameraLeftX, viewW);
 
         gestorEnemigos.update(delta);
+
+        float yTopPantalla = getSueloY() + viewport.getWorldHeight() + 0.5f;
+        gestorEnemigos.setPajaroConfig(
+            2.4f,
+            2,
+            yTopPantalla,
+            0.8f,
+            12.0f,
+            12,
+            0.60f
+        );
+
         gestorEnemigos.updateAtaques(delta, jugador, PPU, cameraLeftX, viewW);
 
         gestorEfectos.update(delta);
 
-        // Colisiones balas normales
         for (Serpiente s : gestorEnemigos.getSerpientes()) {
             if (s.isDead()) continue;
 
@@ -370,7 +449,6 @@ public class PantallaJuego extends ScreenAdapter {
             }
         }
 
-        // Rayo especial
         AtaqueEspecial esp = gestorProyectiles.getEspecial();
         if (esp != null) {
             Rectangle hbRayo = esp.getHitbox();
