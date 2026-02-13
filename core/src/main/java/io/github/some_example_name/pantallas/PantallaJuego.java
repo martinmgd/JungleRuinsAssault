@@ -13,6 +13,8 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
+import java.lang.reflect.Field;
+
 import io.github.some_example_name.Main;
 import io.github.some_example_name.entidades.efectos.GestorEfectos;
 import io.github.some_example_name.entidades.enemigos.GestorEnemigos;
@@ -100,8 +102,31 @@ public class PantallaJuego extends ScreenAdapter {
     // - Bajar en Y el 90% del tamaño del personaje
     private static final float TEMPLO_BAJA_Y_FRAC_JUGADOR = 0.90f;
 
+    // - Escalar: reducir el tamaño un 60% -> queda al 40%
+    private static final float TEMPLO_SCALE = 0.40f;
+
     // - Que el lado derecho quede fuera de pantalla un 20%
     private static final float TEMPLO_RIGHT_OVERFLOW_FRAC = 0.20f;
+
+    // ------------------------------------------------------------
+    // RUINA COMO PARED CON PUERTA (SOLO ENEMIGOS)
+    // + AJUSTE DE HITBOX (INSET) PARA QUE SE ACERQUEN MÁS
+    // ------------------------------------------------------------
+    private final Rectangle muroRuinaIzq = new Rectangle();
+    private final Rectangle muroRuinaDer = new Rectangle();
+    private final Rectangle muroRuinaArriba = new Rectangle();
+
+    private static final float RUINA_EPS = 0.001f;
+
+    // Hueco de puerta en fracciones del sprite (0..1)
+    private static final float PUERTA_X_INI_FRAC = 0.38f;
+    private static final float PUERTA_X_FIN_FRAC = 0.62f;
+    private static final float PUERTA_TOP_FRAC   = 0.55f;
+
+    // INSET del hitbox: mete la colisión hacia adentro para que se acerquen más
+    // (ajusta estos valores si quieres aún más / menos acercamiento)
+    private static final float RUINA_INSET_LEFT  = 0.18f;
+    private static final float RUINA_INSET_RIGHT = 0.12f;
 
     public PantallaJuego(Main juego) {
         this.juego = juego;
@@ -138,6 +163,249 @@ public class PantallaJuego extends ScreenAdapter {
         if (x > maxX) x = maxX;
 
         jugador.setX(x);
+    }
+
+    // ------------------------------------------------------------
+    // RUINA: calcula muros dejando hueco de puerta
+    // + INSET para acercar enemigos más a la entrada
+    // ------------------------------------------------------------
+    private void actualizarColisionRuina(float temploX, float temploY) {
+
+        // Bordes visuales del sprite (NO se cambian)
+        float x0Sprite = temploX;
+        float x1Sprite = temploX + temploWWorld;
+
+        float y0 = temploY;
+        float y1 = temploY + temploHWorld;
+
+        // Bordes de COLISIÓN (metidos hacia adentro)
+        float x0 = x0Sprite + RUINA_INSET_LEFT;
+        float x1 = x1Sprite - RUINA_INSET_RIGHT;
+
+        // Hueco puerta basado en el sprite (para que siga coincidiendo con el arte)
+        float puertaX0 = x0Sprite + temploWWorld * PUERTA_X_INI_FRAC;
+        float puertaX1 = x0Sprite + temploWWorld * PUERTA_X_FIN_FRAC;
+        float puertaTopY = y0 + temploHWorld * PUERTA_TOP_FRAC;
+
+        // Clamp del hueco al rango de colisión (por si el inset pisa el marco)
+        if (puertaX0 < x0) puertaX0 = x0;
+        if (puertaX1 > x1) puertaX1 = x1;
+
+        // Muros (pared con hueco)
+        muroRuinaIzq.set(x0, y0, Math.max(0f, puertaX0 - x0), y1 - y0);
+        muroRuinaDer.set(puertaX1, y0, Math.max(0f, x1 - puertaX1), y1 - y0);
+        muroRuinaArriba.set(
+            puertaX0,
+            puertaTopY,
+            Math.max(0f, puertaX1 - puertaX0),
+            Math.max(0f, y1 - puertaTopY)
+        );
+    }
+
+    // ------------------------------------------------------------
+    // RUINA: empuje en X sin setX (reflection sobre campo "x")
+    // ------------------------------------------------------------
+    private void shiftEntidadX(Object entidad, float dx) {
+        if (entidad == null || dx == 0f) return;
+
+        String[] campos = { "x", "posX", "xWorld", "xworld" };
+
+        for (String c : campos) {
+            try {
+                Field f = entidad.getClass().getDeclaredField(c);
+                f.setAccessible(true);
+
+                if (f.getType() == float.class) {
+                    float x = f.getFloat(entidad);
+                    f.setFloat(entidad, x + dx);
+                    return;
+                }
+                if (f.getType() == Float.class) {
+                    Float x = (Float) f.get(entidad);
+                    if (x != null) {
+                        f.set(entidad, x + dx);
+                        return;
+                    }
+                }
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private float computeDxToSeparateX(Rectangle hb, Rectangle muro) {
+        if (hb == null || muro == null) return 0f;
+        if (muro.width <= 0f || muro.height <= 0f) return 0f;
+        if (!hb.overlaps(muro)) return 0f;
+
+        float hbCenter = hb.x + hb.width * 0.5f;
+        float muroCenter = muro.x + muro.width * 0.5f;
+
+        if (hbCenter < muroCenter) {
+            float desiredHbX = (muro.x - RUINA_EPS) - hb.width;
+            return desiredHbX - hb.x;
+        } else {
+            float desiredHbX = muro.x + muro.width + RUINA_EPS;
+            return desiredHbX - hb.x;
+        }
+    }
+
+    // ------------------------------------------------------------
+    // RUINA: reacción para evitar "fresado" (rebote en X si existe velX)
+    // ------------------------------------------------------------
+    private void reaccionarChoqueRuina(Object entidad) {
+        if (entidad == null) return;
+
+        String[] velCampos = { "velX", "vx", "vX", "speedX", "velocidadX" };
+
+        Field velField = null;
+        Float velX = null;
+
+        for (String c : velCampos) {
+            try {
+                Field f = entidad.getClass().getDeclaredField(c);
+                f.setAccessible(true);
+
+                if (f.getType() == float.class) {
+                    velX = f.getFloat(entidad);
+                    velField = f;
+                    break;
+                } else if (f.getType() == Float.class) {
+                    Float v = (Float) f.get(entidad);
+                    if (v != null) {
+                        velX = v;
+                        velField = f;
+                        break;
+                    }
+                }
+            } catch (Exception ignored) { }
+        }
+
+        if (velField != null && velX != null) {
+            try {
+                float newVel = -velX;
+
+                if (velField.getType() == float.class) velField.setFloat(entidad, newVel);
+                else velField.set(entidad, newVel);
+
+                // Actualizar mirandoDerecha si existe
+                try {
+                    Field fDir = entidad.getClass().getDeclaredField("mirandoDerecha");
+                    fDir.setAccessible(true);
+
+                    if (fDir.getType() == boolean.class) fDir.setBoolean(entidad, newVel > 0f);
+                    else if (fDir.getType() == Boolean.class) fDir.set(entidad, newVel > 0f);
+
+                } catch (Exception ignored2) { }
+
+            } catch (Exception ignored3) { }
+            return;
+        }
+
+        // Fallback: flip de mirandoDerecha si existe
+        try {
+            Field fDir = entidad.getClass().getDeclaredField("mirandoDerecha");
+            fDir.setAccessible(true);
+
+            if (fDir.getType() == boolean.class) {
+                fDir.setBoolean(entidad, !fDir.getBoolean(entidad));
+            } else if (fDir.getType() == Boolean.class) {
+                Boolean b = (Boolean) fDir.get(entidad);
+                if (b != null) fDir.set(entidad, !b);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    // Bloquea SOLO enemigos (jugador libre para entrar por la puerta)
+    private void bloquearEnemigosConRuina() {
+
+        // Serpientes
+        for (Serpiente s : gestorEnemigos.getSerpientes()) {
+            if (s.isDead()) continue;
+
+            Rectangle hb = s.getHitbox();
+            if (hb == null) continue;
+
+            float dx;
+
+            dx = computeDxToSeparateX(hb, muroRuinaIzq);
+            if (dx != 0f) {
+                shiftEntidadX(s, dx);
+                reaccionarChoqueRuina(s);
+            }
+
+            hb = s.getHitbox();
+            dx = computeDxToSeparateX(hb, muroRuinaDer);
+            if (dx != 0f) {
+                shiftEntidadX(s, dx);
+                reaccionarChoqueRuina(s);
+            }
+
+            hb = s.getHitbox();
+            dx = computeDxToSeparateX(hb, muroRuinaArriba);
+            if (dx != 0f) {
+                shiftEntidadX(s, dx);
+                reaccionarChoqueRuina(s);
+            }
+        }
+
+        // Golems
+        for (Golem g : gestorEnemigos.getGolems()) {
+            if (g.isDead()) continue;
+
+            Rectangle hb = g.getHitbox();
+            if (hb == null) continue;
+
+            float dx;
+
+            dx = computeDxToSeparateX(hb, muroRuinaIzq);
+            if (dx != 0f) {
+                shiftEntidadX(g, dx);
+                reaccionarChoqueRuina(g);
+            }
+
+            hb = g.getHitbox();
+            dx = computeDxToSeparateX(hb, muroRuinaDer);
+            if (dx != 0f) {
+                shiftEntidadX(g, dx);
+                reaccionarChoqueRuina(g);
+            }
+
+            hb = g.getHitbox();
+            dx = computeDxToSeparateX(hb, muroRuinaArriba);
+            if (dx != 0f) {
+                shiftEntidadX(g, dx);
+                reaccionarChoqueRuina(g);
+            }
+        }
+
+        // Pájaros (si NO quieres bloquearlos, borra este bloque)
+        for (Pajaro b : gestorEnemigos.getPajaros()) {
+            if (b.isDead()) continue;
+
+            Rectangle hb = b.getHitbox(PPU);
+            if (hb == null) continue;
+
+            float dx;
+
+            dx = computeDxToSeparateX(hb, muroRuinaIzq);
+            if (dx != 0f) {
+                shiftEntidadX(b, dx);
+                reaccionarChoqueRuina(b);
+            }
+
+            hb = b.getHitbox(PPU);
+            dx = computeDxToSeparateX(hb, muroRuinaDer);
+            if (dx != 0f) {
+                shiftEntidadX(b, dx);
+                reaccionarChoqueRuina(b);
+            }
+
+            hb = b.getHitbox(PPU);
+            dx = computeDxToSeparateX(hb, muroRuinaArriba);
+            if (dx != 0f) {
+                shiftEntidadX(b, dx);
+                reaccionarChoqueRuina(b);
+            }
+        }
     }
 
     @Override
@@ -207,8 +475,10 @@ public class PantallaJuego extends ScreenAdapter {
         temploTex = new Texture("sprites/fondos/entradaRuina.png");
         setPixelArt(temploTex);
         temploRegion = new TextureRegion(temploTex);
-        temploWWorld = temploTex.getWidth() / PPU;
-        temploHWorld = temploTex.getHeight() / PPU;
+
+        // Tamaño en mundo escalado: reducir un 60% -> queda 40%
+        temploWWorld = (temploTex.getWidth() / PPU) * TEMPLO_SCALE;
+        temploHWorld = (temploTex.getHeight() / PPU) * TEMPLO_SCALE;
 
         gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
 
@@ -385,6 +655,19 @@ public class PantallaJuego extends ScreenAdapter {
         gestorProyectiles.update(delta, cameraLeftX, viewW);
 
         gestorEnemigos.update(delta);
+
+        // ------------------------------------------------------------
+        // RUINA: actualizar colisión y bloquear enemigos
+        // (NO toca el draw ni la colocación visual)
+        // ------------------------------------------------------------
+        if (temploRegion != null) {
+            float temploX = anchoNivel - (temploWWorld * (1f - TEMPLO_RIGHT_OVERFLOW_FRAC));
+            float temploY = getSueloY() - (jugador.getHeight(PPU) * TEMPLO_BAJA_Y_FRAC_JUGADOR);
+
+            actualizarColisionRuina(temploX, temploY);
+            bloquearEnemigosConRuina();
+        }
+        // ------------------------------------------------------------
 
         float yTopPantalla = getSueloY() + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(

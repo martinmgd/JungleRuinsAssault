@@ -398,6 +398,7 @@ public class Pajaro {
 
         float sp = (float) Math.sqrt(velX * velX + velY * velY);
         if (sp < 0.0001f) sp = 1f;
+
         float k = diveSpeed / sp;
         velX *= k;
         velY *= k;
@@ -463,17 +464,22 @@ public class Pajaro {
         drawRegion(batch, ataque, x, drawY, w, h, rot, mirandoDerecha);
     }
 
-    private void drawRegion(SpriteBatch batch, TextureRegion region,
-                            float x, float y, float w, float h,
-                            float rotationDeg, boolean mirandoDerecha) {
-
+    private void drawRegion(
+        SpriteBatch batch,
+        TextureRegion region,
+        float x, float y,
+        float w, float h,
+        float rotationDeg,
+        boolean mirandoDerecha
+    ) {
         float originX = w * 0.5f;
         float originY = h * 0.5f;
 
         float scaleX = mirandoDerecha ? 1f : -1f;
         float scaleY = 1f;
 
-        batch.draw(region,
+        batch.draw(
+            region,
             x, y,
             originX, originY,
             w, h,

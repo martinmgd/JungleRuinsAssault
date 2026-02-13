@@ -9,3 +9,5 @@ public class Constantes {
     // Pixels Per Meter (relación sprite ↔ mundo)
     public static final float PPM = 32f;
 }
+
+
