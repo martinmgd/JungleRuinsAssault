@@ -88,6 +88,21 @@ public class PantallaJuego extends ScreenAdapter {
     // Suelo objetivo en coordenadas de mundo (se fija una vez y luego se mantiene)
     private float sueloObjetivoY = 0f;
 
+    // ------------------------------------------------------------
+    // TEMPLO / RUINA (FIN DE NIVEL)
+    // ------------------------------------------------------------
+    private Texture temploTex;
+    private TextureRegion temploRegion;
+    private float temploWWorld = 0f;
+    private float temploHWorld = 0f;
+
+    // Ajustes pedidos:
+    // - Bajar en Y el 90% del tamaño del personaje
+    private static final float TEMPLO_BAJA_Y_FRAC_JUGADOR = 0.90f;
+
+    // - Que el lado derecho quede fuera de pantalla un 20%
+    private static final float TEMPLO_RIGHT_OVERFLOW_FRAC = 0.20f;
+
     public PantallaJuego(Main juego) {
         this.juego = juego;
     }
@@ -185,6 +200,15 @@ public class PantallaJuego extends ScreenAdapter {
         rocaTex = new Texture("sprites/proyectiles/enemigo/golem_roca.png");
         setPixelArt(rocaTex);
         rocaRegion = new TextureRegion(rocaTex);
+
+        // ------------------------------------------------------------
+        // TEMPLO / RUINA
+        // ------------------------------------------------------------
+        temploTex = new Texture("sprites/fondos/entradaRuina.png");
+        setPixelArt(temploTex);
+        temploRegion = new TextureRegion(temploTex);
+        temploWWorld = temploTex.getWidth() / PPU;
+        temploHWorld = temploTex.getHeight() / PPU;
 
         gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
 
@@ -476,6 +500,15 @@ public class PantallaJuego extends ScreenAdapter {
         gestorProyectiles.draw(juego.batch, cameraLeftX, viewW);
         gestorEnemigos.render(juego.batch, cameraLeftX, viewW);
         gestorEfectos.draw(juego.batch);
+
+        // TEMPLO: delante del fondo, antes del jugador (jugador queda delante)
+        if (temploRegion != null) {
+            float temploX = anchoNivel - (temploWWorld * (1f - TEMPLO_RIGHT_OVERFLOW_FRAC));
+            float temploY = getSueloY() - (jugador.getHeight(PPU) * TEMPLO_BAJA_Y_FRAC_JUGADOR);
+
+            juego.batch.draw(temploRegion, temploX, temploY, temploWWorld, temploHWorld);
+        }
+
         jugador.draw(juego.batch, PPU);
 
         juego.batch.end();
@@ -503,5 +536,7 @@ public class PantallaJuego extends ScreenAdapter {
         if (rocaTex != null) rocaTex.dispose();
 
         if (venenoAssets != null) venenoAssets.dispose();
+
+        if (temploTex != null) temploTex.dispose();
     }
 }

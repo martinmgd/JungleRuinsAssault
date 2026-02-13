@@ -371,7 +371,7 @@ public class GestorEnemigos {
         float hJ = jugador.getHeight(ppu);
 
         // Spawn más bajo en el lateral (no arriba)
-        float spawnYTop = pajaroYTop - 6.5f;
+        float spawnYTop = pajaroYTop - 5.5f;
         spawnYTop = Math.max(spawnYTop, ySuelo + 2.0f);
 
         // Cabeza/cuerpo random
