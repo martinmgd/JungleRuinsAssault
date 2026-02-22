@@ -73,14 +73,14 @@ public class Serpiente {
     private static final float VENENO_VY = 2.9f;
     private static final float VENENO_GRAVITY = -16.0f;
 
-    // ✅ RUINA = pared (límite derecha)
+    // RUINA = pared (límite derecha)
     private float limiteDerecha = Float.POSITIVE_INFINITY;
 
     public void setLimiteDerecha(float limiteDerecha) {
         this.limiteDerecha = limiteDerecha;
     }
 
-    // ✅ Para el gestor (zonas + distancia a cámara)
+    // Para el gestor
     public float getX() { return x; }
 
     public Serpiente(
@@ -168,30 +168,28 @@ public class Serpiente {
             tAnim += delta;
             x += vx * delta;
 
-            // --- CLAMP CONTRA PARED (ruina) ---
-            // maxX ya viene recortado desde GestorEnemigos, pero además:
-            // evitamos que el HITBOX pase de limiteDerecha.
-            float rightHb = (x + (wWorld - hitbox.width) * 0.5f) + hitbox.width;
-            float limite = maxX; // maxX aquí ya es el "limiteDerecha" pasado desde gestor
+            // ✅ Patrulla estable: de minX a maxX
+            float min = minX;
+            float max = maxX;
 
-            if (rightHb > limite) {
-                float exceso = rightHb - limite;
-                x -= exceso;
+            // ✅ Si hay pared (ruina), se puede llegar pero no entrar
+            if (limiteDerecha != Float.POSITIVE_INFINITY) {
+                float maxPared = limiteDerecha - wWorld * 0.25f;
+                max = Math.min(max, maxPared);
             }
 
-            // ✅ Patrulla base
-            if (x < minX) {
-                x = minX;
+            // Evitar rangos degenerados
+            if (max < min) {
+                float mid = (min + max) * 0.5f;
+                min = mid;
+                max = mid;
+            }
+
+            if (x < min) {
+                x = min;
                 vx = Math.abs(vx);
-            } else if (x > maxX) {
-                x = maxX;
-                vx = -Math.abs(vx);
-            }
-
-            // ✅ RUINA = pared: puede llegar pero NO entrar
-            float maxPared = limiteDerecha - wWorld * 0.25f;
-            if (x > maxPared) {
-                x = maxPared;
+            } else if (x > max) {
+                x = max;
                 vx = -Math.abs(vx);
             }
 
@@ -295,5 +293,3 @@ public class Serpiente {
         }
     }
 }
-
-

@@ -17,7 +17,6 @@ public class PlayerAnimations {
     private static final String WALK_SHEET = "sprites/player/walk/walk_sheet.png";
     private static final String CROUCH_SHEET = "sprites/player/crouch/crouch_sheet.png";
 
-    // Salto unificado (15 frames en un único spritesheet)
     private static final String JUMP_SHEET = "sprites/player/jump/jump_sheet.png";
 
     private static final String DEAD_1_SHEET = "sprites/player/dead/dead_sheet_1.png";
@@ -28,7 +27,6 @@ public class PlayerAnimations {
     private static final float WALK_FRAME_TIME = 0.06f;
     private static final float CROUCH_FRAME_TIME = 0.20f;
 
-    // El salto suele quedar más natural algo rápido
     private static final float JUMP_FRAME_TIME = 0.05f;
 
     private static final float DEAD_FRAME_TIME = 0.07f;
@@ -67,13 +65,12 @@ public class PlayerAnimations {
         walk = buildRowAnimation(walkTex, WALK_FRAME_TIME, true);
         crouch = buildRowAnimation(crouchTex, CROUCH_FRAME_TIME, true);
 
-        // El salto no debe repetirse automáticamente
         jump = buildRowAnimation(jumpTex, JUMP_FRAME_TIME, false);
 
-        // Muerte preparada (se decidirá el flujo exacto más adelante)
-        dead1 = buildRowAnimation(dead1Tex, DEAD_FRAME_TIME, true);
-        dead2 = buildRowAnimation(dead2Tex, DEAD_FRAME_TIME, true);
-        dead3 = buildRowAnimation(dead3Tex, DEAD_FRAME_TIME, true);
+        // ✅ CAMBIO MÍNIMO: la muerte NO debe estar en loop para poder encadenar 1->2->3
+        dead1 = buildRowAnimation(dead1Tex, DEAD_FRAME_TIME, false);
+        dead2 = buildRowAnimation(dead2Tex, DEAD_FRAME_TIME, false);
+        dead3 = buildRowAnimation(dead3Tex, DEAD_FRAME_TIME, false);
     }
 
     private Texture loadTexMust(String path) {

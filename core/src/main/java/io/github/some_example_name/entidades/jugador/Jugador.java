@@ -9,7 +9,7 @@ public class Jugador {
 
     private boolean mirandoDerecha = true;
 
-    public enum Estado { IDLE, WALK, CROUCH, JUMP }
+    public enum Estado { IDLE, WALK, CROUCH, JUMP, DEAD }
 
     private final PlayerAnimations anims;
 
@@ -43,8 +43,15 @@ public class Jugador {
     private float invulnTimer = 0f;
     private float invulnDuration = 0.70f;
 
+    // ✅ NUEVO: fase de muerte (1 -> 2 -> 3)
+    private int deadFase = 1;
+
     public Jugador(PlayerAnimations anims) {
         this.anims = anims;
+    }
+
+    public boolean isDead() {
+        return estado == Estado.DEAD;
     }
 
     public void setSueloY(float sueloY) {
@@ -60,6 +67,41 @@ public class Jugador {
     public void aplicarEntrada(float dir, boolean saltar, boolean agacharse, float delta) {
 
         stateTime += delta;
+
+        // ✅ Si está muerto: no hay control, solo animación y quedarse en el suelo
+        if (estado == Estado.DEAD) {
+
+            // Física vertical mínima por si muriese en el aire
+            if (!enSuelo) {
+                velY += GRAVEDAD * delta;
+                y += velY * delta;
+
+                if (y <= sueloY) {
+                    y = sueloY;
+                    velY = 0f;
+                    enSuelo = true;
+                }
+            } else {
+                if (y < sueloY) y = sueloY;
+            }
+
+            // Encadenar dead1 -> dead2 -> dead3
+            if (deadFase == 1) {
+                if (anims.dead1.isAnimationFinished(stateTime)) {
+                    deadFase = 2;
+                    stateTime = 0f;
+                }
+            } else if (deadFase == 2) {
+                if (anims.dead2.isAnimationFinished(stateTime)) {
+                    deadFase = 3;
+                    stateTime = 0f;
+                }
+            } else {
+                // deadFase == 3: se queda en último frame (no hacemos nada)
+            }
+
+            return;
+        }
 
         if (invulnTimer > 0f) {
             invulnTimer = Math.max(0f, invulnTimer - delta);
@@ -145,11 +187,19 @@ public class Jugador {
 
         estado = nuevoEstado;
         stateTime = 0f;
+
+        if (estado == Estado.DEAD) {
+            deadFase = 1;
+        }
     }
 
     public void draw(SpriteBatch batch, float pixelsPerUnit) {
         Animation<TextureRegion> anim = getAnimacionActual();
-        TextureRegion frame = anim.getKeyFrame(stateTime);
+
+        // ✅ Si es DEAD, NO loop: se queda en último frame
+        TextureRegion frame = (estado == Estado.DEAD)
+            ? anim.getKeyFrame(stateTime, false)
+            : anim.getKeyFrame(stateTime);
 
         float w = frame.getRegionWidth() / pixelsPerUnit;
         float h = frame.getRegionHeight() / pixelsPerUnit;
@@ -169,6 +219,10 @@ public class Jugador {
                 return anims.crouch;
             case JUMP:
                 return anims.jump;
+            case DEAD:
+                if (deadFase == 1) return anims.dead1;
+                if (deadFase == 2) return anims.dead2;
+                return anims.dead3;
             case IDLE:
             default:
                 return anims.idle;
@@ -190,12 +244,29 @@ public class Jugador {
     }
 
     public void recibirDanio(int dmg) {
+        if (estado == Estado.DEAD) return;
         if (invulnTimer > 0f) return;
 
         vida -= dmg;
         if (vida < 0) vida = 0;
 
         invulnTimer = invulnDuration;
+
+        // ✅ Si llega a 0, entra en DEAD y lanza animación
+        if (vida == 0) {
+            setEstado(Estado.DEAD);
+
+            // Para que no siga “arrastrando” movimientos
+            tiempoDerrape = 0f;
+            dirDerrape = 0;
+            bloqueoMovimientoAgachado = false;
+
+            // Si estaba en el suelo, se queda estable
+            if (enSuelo) {
+                velY = 0f;
+                y = sueloY;
+            }
+        }
     }
 
     public int getVida() {
@@ -234,4 +305,3 @@ public class Jugador {
         return y + h * 0.62f;
     }
 }
-

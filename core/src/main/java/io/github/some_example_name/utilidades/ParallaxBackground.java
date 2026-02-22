@@ -21,6 +21,9 @@ public class ParallaxBackground implements Disposable {
     // Se mantiene para no alterar demasiado tu lógica previa
     private final float actionBottomExtra = 0.25f;
 
+    // Altura de referencia para el escalado (mantiene el mismo tamaño en PC y móvil)
+    private float referenceWorldH = Constantes.ALTO_MUNDO;
+
     public ParallaxBackground(String bgPath, String midPath, String fgPath) {
         this.layers = new Texture[] {
             new Texture(bgPath),
@@ -43,7 +46,6 @@ public class ParallaxBackground implements Disposable {
             new Texture(fgPath)
         };
 
-        // Factores para 4 capas (puedes afinarlos si quieres)
         this.factors = new float[] { 0.18f, 0.40f, 0.70f, 1.0f };
 
         this.drawW = new float[layers.length];
@@ -51,11 +53,18 @@ public class ParallaxBackground implements Disposable {
         this.layerY = new float[layers.length];
     }
 
+    // Si algún día quieres probar otra referencia sin tocar Constantes
+    public void setReferenceWorldHeight(float h) {
+        this.referenceWorldH = Math.max(0.01f, h);
+    }
+
     public void resize(float worldW, float worldH) {
         if (layers.length == 0) return;
 
-        // Escalamos usando la altura del BG como referencia
-        float scale = (worldH / layers[0].getHeight()) * zoom;
+        // Importante: NO usamos worldH real del viewport para escalar,
+        // porque con ExtendViewport puede variar entre PC y móvil.
+        // Usamos una altura fija de referencia para mantener el tamaño "de antes".
+        float scale = (referenceWorldH / layers[0].getHeight()) * zoom;
 
         for (int i = 0; i < layers.length; i++) {
             drawW[i] = layers[i].getWidth() * scale;
@@ -63,18 +72,14 @@ public class ParallaxBackground implements Disposable {
         }
 
         if (layers.length == 3) {
-            // Comportamiento anterior: BG centrado, MID abajo, FG abajo.
             layerY[0] = (worldH - drawH[0]) * 0.5f;
             layerY[1] = (worldH - drawH[1]) + 0.2f;
             layerY[2] = Math.min(0f, worldH - drawH[2]) - actionBottomExtra;
         } else {
-            // Nuevo comportamiento para 4 capas:
-            // Capas 0/1/2 ancladas arriba para evitar que "asomen" huecos en la parte superior.
             layerY[0] = worldH - drawH[0];
             layerY[1] = worldH - drawH[1];
             layerY[2] = worldH - drawH[2];
 
-            // FG anclado abajo como antes (suelo)
             layerY[3] = Math.min(0f, worldH - drawH[3]) - actionBottomExtra;
         }
     }

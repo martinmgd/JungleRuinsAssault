@@ -9,6 +9,8 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureWrap;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.utils.ObjectIntMap;
+import com.badlogic.gdx.utils.ObjectSet;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
@@ -26,6 +28,7 @@ import io.github.some_example_name.entidades.proyectiles.jugador.GestorProyectil
 import io.github.some_example_name.entidades.proyectiles.jugador.Proyectil;
 import io.github.some_example_name.utilidades.Constantes;
 import io.github.some_example_name.utilidades.DisparoAssets;
+import io.github.some_example_name.utilidades.Hud;
 import io.github.some_example_name.utilidades.ImpactoAssets;
 import io.github.some_example_name.utilidades.ParallaxBackground;
 import io.github.some_example_name.utilidades.VenenoAssets;
@@ -82,6 +85,9 @@ public class PantallaJuego extends ScreenAdapter {
     private float ajusteSueloY = AJUSTE_SUELO_FINAL;
     private float sueloObjetivoY = 0f;
 
+    // ✅ Base que te gustaba (en unidades de mundo, como antes)
+    private static final float SUELO_ENTIDADES_UP_BASE = 0.90f;
+
     // ------------------------------------------------------------
     // TEMPLO
     // ------------------------------------------------------------
@@ -96,19 +102,42 @@ public class PantallaJuego extends ScreenAdapter {
 
     private static final float TEMPLO_OUT_RIGHT_FRAC = 0.20f;
 
-    // Altura objetivo del templo respecto al viewport (AJUSTABLE)
     private static final float TEMPLO_VIEWPORT_H_FRAC = 0.72f;
 
-    // ✅ SUBIR TEMPLO (AJUSTE PEDIDO)
     private static final float TEMPLO_Y_UP = 0.20f;
 
-    // Puerta: zona donde el jugador se desvanece
     private float puertaX0;
     private float puertaX1;
 
     private float limiteEnemigosDerecha;
 
     private float alphaJugador = 1f;
+
+    // ------------------------------------------------------------
+    // HUD + TIEMPO + PUNTUACIÓN
+    // ------------------------------------------------------------
+    private Hud hud;
+    private int score = 0;
+
+    private float tiempoPartida = 0f;
+    private boolean nivelTerminado = false;
+    private boolean enPausa = false;
+
+    private static final int PUNTOS_PAJARO = 50;
+    private static final int PUNTOS_SERPIENTE = 100;
+    private static final int PUNTOS_GOLEM = 200;
+
+    private static final int HITS_PAJARO = 1;
+    private static final int HITS_SERPIENTE = 3;
+    private static final int HITS_GOLEM = 5;
+
+    private final ObjectIntMap<Pajaro> hitsPajaro = new ObjectIntMap<>();
+    private final ObjectIntMap<Serpiente> hitsSerpiente = new ObjectIntMap<>();
+    private final ObjectIntMap<Golem> hitsGolem = new ObjectIntMap<>();
+
+    private final ObjectSet<Pajaro> puntuadoPajaro = new ObjectSet<>();
+    private final ObjectSet<Serpiente> puntuadoSerpiente = new ObjectSet<>();
+    private final ObjectSet<Golem> puntuadoGolem = new ObjectSet<>();
 
     public PantallaJuego(Main juego) {
         this.juego = juego;
@@ -123,6 +152,18 @@ public class PantallaJuego extends ScreenAdapter {
         return parallax.getGroundY() + ajusteSueloY;
     }
 
+    // ✅ Compensación por el alto real del viewport (evita que en móvil/ventana pequeña cambie el “pisar la hierba”)
+    private float getSueloEntidadesUpWorld() {
+        if (viewport == null) return SUELO_ENTIDADES_UP_BASE;
+        float wh = viewport.getWorldHeight();
+        if (wh <= 0.0001f) return SUELO_ENTIDADES_UP_BASE;
+        return SUELO_ENTIDADES_UP_BASE * (Constantes.ALTO_MUNDO / wh);
+    }
+
+    private float getSueloEntidadesY() {
+        return getSueloY() + getSueloEntidadesUpWorld();
+    }
+
     private void recalcularAjusteSueloParaMantenerObjetivo() {
         ajusteSueloY = sueloObjetivoY - parallax.getGroundY();
     }
@@ -133,7 +174,6 @@ public class PantallaJuego extends ScreenAdapter {
         float minX = 0f;
         float maxX = anchoNivel - playerW;
 
-        // Freno en puerta (no pasar detrás del templo)
         float maxPuerta = puertaX1 - playerW * 0.55f;
         if (maxPuerta > 0f) maxX = Math.min(maxX, maxPuerta);
 
@@ -152,25 +192,20 @@ public class PantallaJuego extends ScreenAdapter {
         float texW = temploTex.getWidth() / PPU;
         float texH = temploTex.getHeight() / PPU;
 
-        // ✅ Escala por altura objetivo del viewport (en vez de constante)
         float desiredH = viewport.getWorldHeight() * TEMPLO_VIEWPORT_H_FRAC;
         float scale = desiredH / Math.max(0.0001f, texH);
 
         temploH = texH * scale;
         temploW = texW * scale;
 
-        // 20% fuera por la derecha
         temploX = anchoNivel - temploW * (1f - TEMPLO_OUT_RIGHT_FRAC);
 
-        // ✅ Bajada EXACTA: 0.90 del alto del jugador (lo que pediste) + subir templo
         float hJ = jugador.getHeight(PPU);
         temploY = getSueloY() - hJ * 0.90f + TEMPLO_Y_UP;
 
-        // Puerta (ajustable si quieres más fino)
         puertaX0 = temploX + temploW * 0.47f;
         puertaX1 = temploX + temploW * 0.63f;
 
-        // Enemigos: llegar al borde pero NO tocar
         limiteEnemigosDerecha = temploX;
         gestorEnemigos.setLimiteDerecha(limiteEnemigosDerecha);
     }
@@ -233,11 +268,11 @@ public class PantallaJuego extends ScreenAdapter {
         setPixelArt(pajaroAttak);
         setPixelArt(pajaroDeath);
 
-        golemIdle   = new Texture("sprites/enemigos/golem/idle_sheet.png");
-        golemWalk   = new Texture("sprites/enemigos/golem/walk_sheet.png");
-        golemThrow  = new Texture("sprites/enemigos/golem/throw_sheet.png");
+        golemIdle = new Texture("sprites/enemigos/golem/idle_sheet.png");
+        golemWalk = new Texture("sprites/enemigos/golem/walk_sheet.png");
+        golemThrow = new Texture("sprites/enemigos/golem/throw_sheet.png");
         golemAttack = new Texture("sprites/enemigos/golem/attack_sheet.png");
-        golemDeath  = new Texture("sprites/enemigos/golem/death_sheet.png");
+        golemDeath = new Texture("sprites/enemigos/golem/death_sheet.png");
 
         setPixelArt(golemIdle);
         setPixelArt(golemWalk);
@@ -250,7 +285,6 @@ public class PantallaJuego extends ScreenAdapter {
         rocaRegion = new TextureRegion(rocaTex);
 
         gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
-
         gestorEnemigos.setGolemTextures(golemIdle, golemWalk, golemThrow, golemAttack, golemDeath);
         gestorEnemigos.setRocaRegion(rocaRegion);
 
@@ -262,16 +296,14 @@ public class PantallaJuego extends ScreenAdapter {
         camara.update();
 
         jugador.setX(viewW / 2f);
-        jugador.setSueloY(getSueloY());
-        jugador.setY(getSueloY());
+        jugador.setSueloY(getSueloEntidadesY());
+        jugador.setY(getSueloEntidadesY());
 
-        // Templo
         temploTex = new Texture("sprites/fondos/entradaRuina.png");
         setPixelArt(temploTex);
         temploRegion = new TextureRegion(temploTex);
 
-        // Enemigos
-        gestorEnemigos.setYsuelo(getSueloY());
+        gestorEnemigos.setYsuelo(getSueloEntidadesY());
         gestorEnemigos.setAnimacion(128, 80, 0.20f);
         gestorEnemigos.setStats(2.0f, 10);
 
@@ -285,7 +317,7 @@ public class PantallaJuego extends ScreenAdapter {
 
         gestorEnemigos.setYOffsetWorld(0.15f);
 
-        float yTopPantalla = getSueloY() + viewport.getWorldHeight() + 0.5f;
+        float yTopPantalla = getSueloEntidadesY() + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(
             2.4f,
             2,
@@ -304,11 +336,28 @@ public class PantallaJuego extends ScreenAdapter {
 
         configurarTemplo();
         clampJugadorEnNivel();
+
+        hud = new Hud();
+        hud.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        hud.setVida(jugador.getVida());
+        hud.setScore(score);
+        hud.setTiempoSeg(tiempoPartida);
+
+        tiempoPartida = 0f;
+        nivelTerminado = false;
+        enPausa = false;
+
+        hitsPajaro.clear();
+        hitsSerpiente.clear();
+        hitsGolem.clear();
+        puntuadoPajaro.clear();
+        puntuadoSerpiente.clear();
+        puntuadoGolem.clear();
     }
 
     @Override
     public void resize(int width, int height) {
-        float sueloAntes = (parallax != null) ? getSueloY() : 0f;
+        float sueloAntes = (parallax != null) ? getSueloEntidadesY() : 0f;
 
         viewport.update(width, height, true);
 
@@ -321,7 +370,7 @@ public class PantallaJuego extends ScreenAdapter {
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
 
-        float sueloDespues = getSueloY();
+        float sueloDespues = getSueloEntidadesY();
         float deltaSuelo = sueloDespues - sueloAntes;
 
         jugador.setSueloY(sueloDespues);
@@ -342,10 +391,16 @@ public class PantallaJuego extends ScreenAdapter {
 
         configurarTemplo();
         clampJugadorEnNivel();
+
+        if (hud != null) hud.resize(width, height);
     }
 
     @Override
     public void render(float delta) {
+
+        if (!enPausa && !nivelTerminado) {
+            tiempoPartida += delta;
+        }
 
         float h = jugador.getHeight(PPU);
 
@@ -363,13 +418,17 @@ public class PantallaJuego extends ScreenAdapter {
         boolean disparaNormal = Gdx.input.isKeyJustPressed(Input.Keys.J);
         boolean disparaEspecial = Gdx.input.isKeyJustPressed(Input.Keys.K);
 
-        jugador.setSueloY(getSueloY());
+        jugador.setSueloY(getSueloEntidadesY());
         jugador.aplicarEntrada(dir, saltar, agacharse, delta);
 
         clampJugadorEnNivel();
         actualizarAlphaEntradaTemplo();
 
-        gestorEnemigos.setYsuelo(getSueloY());
+        if (!nivelTerminado && alphaJugador <= 0.01f) {
+            nivelTerminado = true;
+        }
+
+        gestorEnemigos.setYsuelo(getSueloEntidadesY());
         gestorEnemigos.setLimiteDerecha(limiteEnemigosDerecha);
 
         if (disparaNormal || disparaEspecial) {
@@ -418,7 +477,7 @@ public class PantallaJuego extends ScreenAdapter {
         gestorProyectiles.update(delta, cameraLeftX, viewW);
         gestorEnemigos.update(delta);
 
-        float yTopPantalla = getSueloY() + viewport.getWorldHeight() + 0.5f;
+        float yTopPantalla = getSueloEntidadesY() + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(
             2.4f,
             2,
@@ -432,7 +491,6 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEnemigos.updateAtaques(delta, jugador, PPU, cameraLeftX, viewW);
         gestorEfectos.update(delta);
 
-        // Colisiones (igual que tu clase)
         for (Serpiente s : gestorEnemigos.getSerpientes()) {
             if (s.isDead()) continue;
 
@@ -441,7 +499,17 @@ public class PantallaJuego extends ScreenAdapter {
                 if (p.isEliminar()) continue;
 
                 if (s.getHitbox().overlaps(p.getHitbox())) {
-                    s.recibirDanio(p.getDamage());
+
+                    int hs = hitsSerpiente.get(s, 0) + 1;
+                    hitsSerpiente.put(s, hs);
+
+                    if (hs >= HITS_SERPIENTE) {
+                        s.recibirDanio(999999);
+                        if (!puntuadoSerpiente.contains(s)) {
+                            score += PUNTOS_SERPIENTE;
+                            puntuadoSerpiente.add(s);
+                        }
+                    }
 
                     Rectangle hb = p.getHitbox();
                     float cy = hb.y + hb.height * 0.5f;
@@ -464,7 +532,17 @@ public class PantallaJuego extends ScreenAdapter {
                 if (p.isEliminar()) continue;
 
                 if (b.getHitbox(PPU).overlaps(p.getHitbox())) {
-                    b.recibirDanio(p.getDamage());
+
+                    int hbHits = hitsPajaro.get(b, 0) + 1;
+                    hitsPajaro.put(b, hbHits);
+
+                    if (hbHits >= HITS_PAJARO) {
+                        b.recibirDanio(999999);
+                        if (!puntuadoPajaro.contains(b)) {
+                            score += PUNTOS_PAJARO;
+                            puntuadoPajaro.add(b);
+                        }
+                    }
 
                     Rectangle hb = p.getHitbox();
                     float cy = hb.y + hb.height * 0.5f;
@@ -487,7 +565,17 @@ public class PantallaJuego extends ScreenAdapter {
                 if (p.isEliminar()) continue;
 
                 if (g.getHitbox().overlaps(p.getHitbox())) {
-                    g.recibirDanio(p.getDamage());
+
+                    int hg = hitsGolem.get(g, 0) + 1;
+                    hitsGolem.put(g, hg);
+
+                    if (hg >= HITS_GOLEM) {
+                        g.recibirDanio(999999);
+                        if (!puntuadoGolem.contains(g)) {
+                            score += PUNTOS_GOLEM;
+                            puntuadoGolem.add(g);
+                        }
+                    }
 
                     Rectangle hb = p.getHitbox();
                     float cy = hb.y + hb.height * 0.5f;
@@ -525,7 +613,6 @@ public class PantallaJuego extends ScreenAdapter {
 
         parallax.render(juego.batch, cameraLeftX, viewW);
 
-        // Templo
         if (temploX + temploW > cameraLeftX - 2f && temploX < rightX + 2f) {
             juego.batch.draw(temploRegion, temploX, temploY, temploW, temploH);
         }
@@ -534,7 +621,6 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEnemigos.render(juego.batch, cameraLeftX, viewW);
         gestorEfectos.draw(juego.batch);
 
-        // ✅ Solo el jugador se desvanece (sin oscurecer nada)
         float pr = juego.batch.getColor().r;
         float pg = juego.batch.getColor().g;
         float pb = juego.batch.getColor().b;
@@ -542,10 +628,18 @@ public class PantallaJuego extends ScreenAdapter {
 
         juego.batch.setColor(1f, 1f, 1f, alphaJugador);
         jugador.draw(juego.batch, PPU);
-
         juego.batch.setColor(pr, pg, pb, pa);
 
         juego.batch.end();
+
+        if (hud != null) {
+            juego.batch.begin();
+            hud.setVida(jugador.getVida());
+            hud.setScore(score);
+            hud.setTiempoSeg(tiempoPartida);
+            hud.draw(juego.batch);
+            juego.batch.end();
+        }
     }
 
     @Override
@@ -571,5 +665,7 @@ public class PantallaJuego extends ScreenAdapter {
         if (venenoAssets != null) venenoAssets.dispose();
 
         if (temploTex != null) temploTex.dispose();
+
+        if (hud != null) hud.dispose();
     }
 }
