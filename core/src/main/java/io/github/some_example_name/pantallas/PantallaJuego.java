@@ -13,8 +13,6 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
-import java.lang.reflect.Field;
-
 import io.github.some_example_name.Main;
 import io.github.some_example_name.entidades.efectos.GestorEfectos;
 import io.github.some_example_name.entidades.enemigos.GestorEnemigos;
@@ -42,8 +40,6 @@ public class PantallaJuego extends ScreenAdapter {
     private PlayerAnimations anims;
     private Jugador jugador;
 
-    // Nivel más largo para dar sensación de recorrido
-    // (el fondo tilea y con esto no “se acaba” el mundo)
     private float anchoNivel = 400f;
 
     private float limiteIzq;
@@ -80,53 +76,39 @@ public class PantallaJuego extends ScreenAdapter {
 
     private final Color colorImpactoNormal = new Color(1f, 0.6f, 0.15f, 1f);
 
-    // Valores finales que calibraste
     private static final float GROUND_FRAC_FINAL = 0.45f;
     private static final float AJUSTE_SUELO_FINAL = -4.7f;
 
-    // Offset que se aplica al suelo (se recalcula en resize para mantener el suelo objetivo)
     private float ajusteSueloY = AJUSTE_SUELO_FINAL;
-
-    // Suelo objetivo en coordenadas de mundo (se fija una vez y luego se mantiene)
     private float sueloObjetivoY = 0f;
 
     // ------------------------------------------------------------
-    // TEMPLO / RUINA (FIN DE NIVEL)
+    // TEMPLO
     // ------------------------------------------------------------
     private Texture temploTex;
     private TextureRegion temploRegion;
-    private float temploWWorld = 0f;
-    private float temploHWorld = 0f;
 
-    // Ajustes pedidos:
-    // - Bajar en Y el 90% del tamaño del personaje
-    private static final float TEMPLO_BAJA_Y_FRAC_JUGADOR = 0.90f;
+    private float temploW;
+    private float temploH;
 
-    // - Escalar: reducir el tamaño un 60% -> queda al 40%
-    private static final float TEMPLO_SCALE = 0.40f;
+    private float temploX;
+    private float temploY;
 
-    // - Que el lado derecho quede fuera de pantalla un 20%
-    private static final float TEMPLO_RIGHT_OVERFLOW_FRAC = 0.20f;
+    private static final float TEMPLO_OUT_RIGHT_FRAC = 0.20f;
 
-    // ------------------------------------------------------------
-    // RUINA COMO PARED CON PUERTA (SOLO ENEMIGOS)
-    // + AJUSTE DE HITBOX (INSET) PARA QUE SE ACERQUEN MÁS
-    // ------------------------------------------------------------
-    private final Rectangle muroRuinaIzq = new Rectangle();
-    private final Rectangle muroRuinaDer = new Rectangle();
-    private final Rectangle muroRuinaArriba = new Rectangle();
+    // Altura objetivo del templo respecto al viewport (AJUSTABLE)
+    private static final float TEMPLO_VIEWPORT_H_FRAC = 0.72f;
 
-    private static final float RUINA_EPS = 0.001f;
+    // ✅ SUBIR TEMPLO (AJUSTE PEDIDO)
+    private static final float TEMPLO_Y_UP = 0.20f;
 
-    // Hueco de puerta en fracciones del sprite (0..1)
-    private static final float PUERTA_X_INI_FRAC = 0.38f;
-    private static final float PUERTA_X_FIN_FRAC = 0.62f;
-    private static final float PUERTA_TOP_FRAC   = 0.55f;
+    // Puerta: zona donde el jugador se desvanece
+    private float puertaX0;
+    private float puertaX1;
 
-    // INSET del hitbox: mete la colisión hacia adentro para que se acerquen más
-    // (ajusta estos valores si quieres aún más / menos acercamiento)
-    private static final float RUINA_INSET_LEFT  = 0.18f;
-    private static final float RUINA_INSET_RIGHT = 0.12f;
+    private float limiteEnemigosDerecha;
+
+    private float alphaJugador = 1f;
 
     public PantallaJuego(Main juego) {
         this.juego = juego;
@@ -141,22 +123,21 @@ public class PantallaJuego extends ScreenAdapter {
         return parallax.getGroundY() + ajusteSueloY;
     }
 
-    // Recalcula ajusteSueloY para mantener el mismo sueloObjetivoY aunque cambie parallax.getGroundY() tras resize
     private void recalcularAjusteSueloParaMantenerObjetivo() {
         ajusteSueloY = sueloObjetivoY - parallax.getGroundY();
     }
 
-    // Evita que el jugador se salga del nivel (izquierda/derecha)
     private void clampJugadorEnNivel() {
         float playerW = jugador.getWidth(PPU);
 
         float minX = 0f;
         float maxX = anchoNivel - playerW;
 
-        if (maxX < minX) {
-            // Por si algún día anchoNivel fuese más pequeño que el jugador
-            maxX = minX;
-        }
+        // Freno en puerta (no pasar detrás del templo)
+        float maxPuerta = puertaX1 - playerW * 0.55f;
+        if (maxPuerta > 0f) maxX = Math.min(maxX, maxPuerta);
+
+        if (maxX < minX) maxX = minX;
 
         float x = jugador.getX();
         if (x < minX) x = minX;
@@ -165,247 +146,51 @@ public class PantallaJuego extends ScreenAdapter {
         jugador.setX(x);
     }
 
-    // ------------------------------------------------------------
-    // RUINA: calcula muros dejando hueco de puerta
-    // + INSET para acercar enemigos más a la entrada
-    // ------------------------------------------------------------
-    private void actualizarColisionRuina(float temploX, float temploY) {
+    private void configurarTemplo() {
+        if (temploTex == null || jugador == null || viewport == null) return;
 
-        // Bordes visuales del sprite (NO se cambian)
-        float x0Sprite = temploX;
-        float x1Sprite = temploX + temploWWorld;
+        float texW = temploTex.getWidth() / PPU;
+        float texH = temploTex.getHeight() / PPU;
 
-        float y0 = temploY;
-        float y1 = temploY + temploHWorld;
+        // ✅ Escala por altura objetivo del viewport (en vez de constante)
+        float desiredH = viewport.getWorldHeight() * TEMPLO_VIEWPORT_H_FRAC;
+        float scale = desiredH / Math.max(0.0001f, texH);
 
-        // Bordes de COLISIÓN (metidos hacia adentro)
-        float x0 = x0Sprite + RUINA_INSET_LEFT;
-        float x1 = x1Sprite - RUINA_INSET_RIGHT;
+        temploH = texH * scale;
+        temploW = texW * scale;
 
-        // Hueco puerta basado en el sprite (para que siga coincidiendo con el arte)
-        float puertaX0 = x0Sprite + temploWWorld * PUERTA_X_INI_FRAC;
-        float puertaX1 = x0Sprite + temploWWorld * PUERTA_X_FIN_FRAC;
-        float puertaTopY = y0 + temploHWorld * PUERTA_TOP_FRAC;
+        // 20% fuera por la derecha
+        temploX = anchoNivel - temploW * (1f - TEMPLO_OUT_RIGHT_FRAC);
 
-        // Clamp del hueco al rango de colisión (por si el inset pisa el marco)
-        if (puertaX0 < x0) puertaX0 = x0;
-        if (puertaX1 > x1) puertaX1 = x1;
+        // ✅ Bajada EXACTA: 0.90 del alto del jugador (lo que pediste) + subir templo
+        float hJ = jugador.getHeight(PPU);
+        temploY = getSueloY() - hJ * 0.90f + TEMPLO_Y_UP;
 
-        // Muros (pared con hueco)
-        muroRuinaIzq.set(x0, y0, Math.max(0f, puertaX0 - x0), y1 - y0);
-        muroRuinaDer.set(puertaX1, y0, Math.max(0f, x1 - puertaX1), y1 - y0);
-        muroRuinaArriba.set(
-            puertaX0,
-            puertaTopY,
-            Math.max(0f, puertaX1 - puertaX0),
-            Math.max(0f, y1 - puertaTopY)
-        );
+        // Puerta (ajustable si quieres más fino)
+        puertaX0 = temploX + temploW * 0.47f;
+        puertaX1 = temploX + temploW * 0.63f;
+
+        // Enemigos: llegar al borde pero NO tocar
+        limiteEnemigosDerecha = temploX;
+        gestorEnemigos.setLimiteDerecha(limiteEnemigosDerecha);
     }
 
-    // ------------------------------------------------------------
-    // RUINA: empuje en X sin setX (reflection sobre campo "x")
-    // ------------------------------------------------------------
-    private void shiftEntidadX(Object entidad, float dx) {
-        if (entidad == null || dx == 0f) return;
+    private void actualizarAlphaEntradaTemplo() {
+        float playerW = jugador.getWidth(PPU);
+        float cx = jugador.getX() + playerW * 0.5f;
 
-        String[] campos = { "x", "posX", "xWorld", "xworld" };
-
-        for (String c : campos) {
-            try {
-                Field f = entidad.getClass().getDeclaredField(c);
-                f.setAccessible(true);
-
-                if (f.getType() == float.class) {
-                    float x = f.getFloat(entidad);
-                    f.setFloat(entidad, x + dx);
-                    return;
-                }
-                if (f.getType() == Float.class) {
-                    Float x = (Float) f.get(entidad);
-                    if (x != null) {
-                        f.set(entidad, x + dx);
-                        return;
-                    }
-                }
-            } catch (Exception ignored) { }
+        if (cx <= puertaX0) {
+            alphaJugador = 1f;
+            return;
         }
-    }
-
-    private float computeDxToSeparateX(Rectangle hb, Rectangle muro) {
-        if (hb == null || muro == null) return 0f;
-        if (muro.width <= 0f || muro.height <= 0f) return 0f;
-        if (!hb.overlaps(muro)) return 0f;
-
-        float hbCenter = hb.x + hb.width * 0.5f;
-        float muroCenter = muro.x + muro.width * 0.5f;
-
-        if (hbCenter < muroCenter) {
-            float desiredHbX = (muro.x - RUINA_EPS) - hb.width;
-            return desiredHbX - hb.x;
-        } else {
-            float desiredHbX = muro.x + muro.width + RUINA_EPS;
-            return desiredHbX - hb.x;
-        }
-    }
-
-    // ------------------------------------------------------------
-    // RUINA: reacción para evitar "fresado" (rebote en X si existe velX)
-    // ------------------------------------------------------------
-    private void reaccionarChoqueRuina(Object entidad) {
-        if (entidad == null) return;
-
-        String[] velCampos = { "velX", "vx", "vX", "speedX", "velocidadX" };
-
-        Field velField = null;
-        Float velX = null;
-
-        for (String c : velCampos) {
-            try {
-                Field f = entidad.getClass().getDeclaredField(c);
-                f.setAccessible(true);
-
-                if (f.getType() == float.class) {
-                    velX = f.getFloat(entidad);
-                    velField = f;
-                    break;
-                } else if (f.getType() == Float.class) {
-                    Float v = (Float) f.get(entidad);
-                    if (v != null) {
-                        velX = v;
-                        velField = f;
-                        break;
-                    }
-                }
-            } catch (Exception ignored) { }
-        }
-
-        if (velField != null && velX != null) {
-            try {
-                float newVel = -velX;
-
-                if (velField.getType() == float.class) velField.setFloat(entidad, newVel);
-                else velField.set(entidad, newVel);
-
-                // Actualizar mirandoDerecha si existe
-                try {
-                    Field fDir = entidad.getClass().getDeclaredField("mirandoDerecha");
-                    fDir.setAccessible(true);
-
-                    if (fDir.getType() == boolean.class) fDir.setBoolean(entidad, newVel > 0f);
-                    else if (fDir.getType() == Boolean.class) fDir.set(entidad, newVel > 0f);
-
-                } catch (Exception ignored2) { }
-
-            } catch (Exception ignored3) { }
+        if (cx >= puertaX1) {
+            alphaJugador = 0f;
             return;
         }
 
-        // Fallback: flip de mirandoDerecha si existe
-        try {
-            Field fDir = entidad.getClass().getDeclaredField("mirandoDerecha");
-            fDir.setAccessible(true);
-
-            if (fDir.getType() == boolean.class) {
-                fDir.setBoolean(entidad, !fDir.getBoolean(entidad));
-            } else if (fDir.getType() == Boolean.class) {
-                Boolean b = (Boolean) fDir.get(entidad);
-                if (b != null) fDir.set(entidad, !b);
-            }
-        } catch (Exception ignored) { }
-    }
-
-    // Bloquea SOLO enemigos (jugador libre para entrar por la puerta)
-    private void bloquearEnemigosConRuina() {
-
-        // Serpientes
-        for (Serpiente s : gestorEnemigos.getSerpientes()) {
-            if (s.isDead()) continue;
-
-            Rectangle hb = s.getHitbox();
-            if (hb == null) continue;
-
-            float dx;
-
-            dx = computeDxToSeparateX(hb, muroRuinaIzq);
-            if (dx != 0f) {
-                shiftEntidadX(s, dx);
-                reaccionarChoqueRuina(s);
-            }
-
-            hb = s.getHitbox();
-            dx = computeDxToSeparateX(hb, muroRuinaDer);
-            if (dx != 0f) {
-                shiftEntidadX(s, dx);
-                reaccionarChoqueRuina(s);
-            }
-
-            hb = s.getHitbox();
-            dx = computeDxToSeparateX(hb, muroRuinaArriba);
-            if (dx != 0f) {
-                shiftEntidadX(s, dx);
-                reaccionarChoqueRuina(s);
-            }
-        }
-
-        // Golems
-        for (Golem g : gestorEnemigos.getGolems()) {
-            if (g.isDead()) continue;
-
-            Rectangle hb = g.getHitbox();
-            if (hb == null) continue;
-
-            float dx;
-
-            dx = computeDxToSeparateX(hb, muroRuinaIzq);
-            if (dx != 0f) {
-                shiftEntidadX(g, dx);
-                reaccionarChoqueRuina(g);
-            }
-
-            hb = g.getHitbox();
-            dx = computeDxToSeparateX(hb, muroRuinaDer);
-            if (dx != 0f) {
-                shiftEntidadX(g, dx);
-                reaccionarChoqueRuina(g);
-            }
-
-            hb = g.getHitbox();
-            dx = computeDxToSeparateX(hb, muroRuinaArriba);
-            if (dx != 0f) {
-                shiftEntidadX(g, dx);
-                reaccionarChoqueRuina(g);
-            }
-        }
-
-        // Pájaros (si NO quieres bloquearlos, borra este bloque)
-        for (Pajaro b : gestorEnemigos.getPajaros()) {
-            if (b.isDead()) continue;
-
-            Rectangle hb = b.getHitbox(PPU);
-            if (hb == null) continue;
-
-            float dx;
-
-            dx = computeDxToSeparateX(hb, muroRuinaIzq);
-            if (dx != 0f) {
-                shiftEntidadX(b, dx);
-                reaccionarChoqueRuina(b);
-            }
-
-            hb = b.getHitbox(PPU);
-            dx = computeDxToSeparateX(hb, muroRuinaDer);
-            if (dx != 0f) {
-                shiftEntidadX(b, dx);
-                reaccionarChoqueRuina(b);
-            }
-
-            hb = b.getHitbox(PPU);
-            dx = computeDxToSeparateX(hb, muroRuinaArriba);
-            if (dx != 0f) {
-                shiftEntidadX(b, dx);
-                reaccionarChoqueRuina(b);
-            }
-        }
+        float t = (cx - puertaX0) / Math.max(0.0001f, (puertaX1 - puertaX0));
+        t = Math.max(0f, Math.min(1f, t));
+        alphaJugador = 1f - t;
     }
 
     @Override
@@ -428,7 +213,6 @@ public class PantallaJuego extends ScreenAdapter {
         parallax.setGroundFrac(GROUND_FRAC_FINAL);
         parallax.resize(viewport.getWorldWidth(), viewport.getWorldHeight());
 
-        // Fijamos una vez el suelo objetivo usando tu calibración final
         sueloObjetivoY = parallax.getGroundY() + AJUSTE_SUELO_FINAL;
         recalcularAjusteSueloParaMantenerObjetivo();
 
@@ -439,19 +223,16 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEfectos = new GestorEfectos(impactoAssets.impacto);
         gestorEfectos.setImpactoConfig(0.55f, 0.55f, 0.14f);
 
-        // Serpiente
         serpienteWalk = new Texture("sprites/enemigos/serpiente/serpiente_walk.png");
         serpienteDeath = new Texture("sprites/enemigos/serpiente/serpiente_death.png");
         setPixelArt(serpienteWalk);
         setPixelArt(serpienteDeath);
 
-        // Pájaro
         pajaroAttak = new Texture("sprites/enemigos/pajaro/pajaro_attack.png");
         pajaroDeath = new Texture("sprites/enemigos/pajaro/pajaro_dead.png");
         setPixelArt(pajaroAttak);
         setPixelArt(pajaroDeath);
 
-        // Golem
         golemIdle   = new Texture("sprites/enemigos/golem/idle_sheet.png");
         golemWalk   = new Texture("sprites/enemigos/golem/walk_sheet.png");
         golemThrow  = new Texture("sprites/enemigos/golem/throw_sheet.png");
@@ -464,39 +245,14 @@ public class PantallaJuego extends ScreenAdapter {
         setPixelArt(golemAttack);
         setPixelArt(golemDeath);
 
-        // Roca
         rocaTex = new Texture("sprites/proyectiles/enemigo/golem_roca.png");
         setPixelArt(rocaTex);
         rocaRegion = new TextureRegion(rocaTex);
 
-        // ------------------------------------------------------------
-        // TEMPLO / RUINA
-        // ------------------------------------------------------------
-        temploTex = new Texture("sprites/fondos/entradaRuina.png");
-        setPixelArt(temploTex);
-        temploRegion = new TextureRegion(temploTex);
-
-        // Tamaño en mundo escalado: reducir un 60% -> queda 40%
-        temploWWorld = (temploTex.getWidth() / PPU) * TEMPLO_SCALE;
-        temploHWorld = (temploTex.getHeight() / PPU) * TEMPLO_SCALE;
-
         gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
 
-        gestorEnemigos.setGolemTextures(
-            golemIdle,
-            golemWalk,
-            golemThrow,
-            golemAttack,
-            golemDeath
-        );
+        gestorEnemigos.setGolemTextures(golemIdle, golemWalk, golemThrow, golemAttack, golemDeath);
         gestorEnemigos.setRocaRegion(rocaRegion);
-
-        gestorEnemigos.setGolemSpawnConfig(
-            4.0f,
-            2,
-            10f,
-            anchoNivel - 10f
-        );
 
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
@@ -505,23 +261,28 @@ public class PantallaJuego extends ScreenAdapter {
         camara.position.set(viewW / 2f, viewport.getWorldHeight() / 2f, 0f);
         camara.update();
 
-        // Colocación inicial ya con suelo fijo
         jugador.setX(viewW / 2f);
         jugador.setSueloY(getSueloY());
         jugador.setY(getSueloY());
 
-        clampJugadorEnNivel();
+        // Templo
+        temploTex = new Texture("sprites/fondos/entradaRuina.png");
+        setPixelArt(temploTex);
+        temploRegion = new TextureRegion(temploTex);
 
+        // Enemigos
         gestorEnemigos.setYsuelo(getSueloY());
         gestorEnemigos.setAnimacion(128, 80, 0.20f);
         gestorEnemigos.setStats(2.0f, 10);
+
         gestorEnemigos.setSpawnConfig(
             2.2f,
             6,
-            10f,
-            anchoNivel - 10f,
+            2f,
+            anchoNivel - 2f,
             2.5f
         );
+
         gestorEnemigos.setYOffsetWorld(0.15f);
 
         float yTopPantalla = getSueloY() + viewport.getWorldHeight() + 0.5f;
@@ -540,19 +301,19 @@ public class PantallaJuego extends ScreenAdapter {
 
         gestorEnemigos.setAtaques(12, 0.9f, 8, 1.8f);
         gestorEnemigos.setVenenoConfig(2.2f, 7.5f, 10.0f, 0.35f, 0.35f);
+
+        configurarTemplo();
+        clampJugadorEnNivel();
     }
 
     @Override
     public void resize(int width, int height) {
-        // Guardamos el suelo actual antes de recalcular, para recolocar al jugador sin “caída”
         float sueloAntes = (parallax != null) ? getSueloY() : 0f;
 
         viewport.update(width, height, true);
 
         if (parallax != null) {
             parallax.resize(viewport.getWorldWidth(), viewport.getWorldHeight());
-
-            // Mantenemos el MISMO suelo objetivo tras el resize
             recalcularAjusteSueloParaMantenerObjetivo();
         }
 
@@ -560,14 +321,11 @@ public class PantallaJuego extends ScreenAdapter {
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
 
-        // Recoloca jugador al nuevo suelo manteniendo estabilidad
         float sueloDespues = getSueloY();
         float deltaSuelo = sueloDespues - sueloAntes;
 
         jugador.setSueloY(sueloDespues);
         jugador.setY(jugador.getY() + deltaSuelo);
-
-        clampJugadorEnNivel();
 
         gestorEnemigos.setYsuelo(sueloDespues);
 
@@ -581,6 +339,9 @@ public class PantallaJuego extends ScreenAdapter {
             12,
             0.60f
         );
+
+        configurarTemplo();
+        clampJugadorEnNivel();
     }
 
     @Override
@@ -605,10 +366,11 @@ public class PantallaJuego extends ScreenAdapter {
         jugador.setSueloY(getSueloY());
         jugador.aplicarEntrada(dir, saltar, agacharse, delta);
 
-        // Importante: después de mover, cerramos al nivel
         clampJugadorEnNivel();
+        actualizarAlphaEntradaTemplo();
 
         gestorEnemigos.setYsuelo(getSueloY());
+        gestorEnemigos.setLimiteDerecha(limiteEnemigosDerecha);
 
         if (disparaNormal || disparaEspecial) {
 
@@ -651,23 +413,10 @@ public class PantallaJuego extends ScreenAdapter {
 
         float cameraLeftX = camara.position.x - viewport.getWorldWidth() / 2f;
         float viewW = viewport.getWorldWidth();
+        float rightX = cameraLeftX + viewW;
 
         gestorProyectiles.update(delta, cameraLeftX, viewW);
-
         gestorEnemigos.update(delta);
-
-        // ------------------------------------------------------------
-        // RUINA: actualizar colisión y bloquear enemigos
-        // (NO toca el draw ni la colocación visual)
-        // ------------------------------------------------------------
-        if (temploRegion != null) {
-            float temploX = anchoNivel - (temploWWorld * (1f - TEMPLO_RIGHT_OVERFLOW_FRAC));
-            float temploY = getSueloY() - (jugador.getHeight(PPU) * TEMPLO_BAJA_Y_FRAC_JUGADOR);
-
-            actualizarColisionRuina(temploX, temploY);
-            bloquearEnemigosConRuina();
-        }
-        // ------------------------------------------------------------
 
         float yTopPantalla = getSueloY() + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(
@@ -681,9 +430,9 @@ public class PantallaJuego extends ScreenAdapter {
         );
 
         gestorEnemigos.updateAtaques(delta, jugador, PPU, cameraLeftX, viewW);
-
         gestorEfectos.update(delta);
 
+        // Colisiones (igual que tu clase)
         for (Serpiente s : gestorEnemigos.getSerpientes()) {
             if (s.isDead()) continue;
 
@@ -702,7 +451,6 @@ public class PantallaJuego extends ScreenAdapter {
                     float shift = (p.getVx() >= 0f) ? avance : -avance;
 
                     gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
-
                     p.marcarEliminar();
                 }
             }
@@ -726,7 +474,6 @@ public class PantallaJuego extends ScreenAdapter {
                     float shift = (p.getVx() >= 0f) ? avance : -avance;
 
                     gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
-
                     p.marcarEliminar();
                 }
             }
@@ -750,7 +497,6 @@ public class PantallaJuego extends ScreenAdapter {
                     float shift = (p.getVx() >= 0f) ? avance : -avance;
 
                     gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
-
                     p.marcarEliminar();
                 }
             }
@@ -764,12 +510,10 @@ public class PantallaJuego extends ScreenAdapter {
                     if (s.isDead()) continue;
                     if (s.getHitbox().overlaps(hbRayo)) s.recibirDanio(esp.getDamage());
                 }
-
                 for (Pajaro b : gestorEnemigos.getPajaros()) {
                     if (b.isDead()) continue;
                     if (b.getHitbox(PPU).overlaps(hbRayo)) b.recibirDanio(esp.getDamage());
                 }
-
                 for (Golem g : gestorEnemigos.getGolems()) {
                     if (g.isDead()) continue;
                     if (g.getHitbox().overlaps(hbRayo)) g.recibirDanio(esp.getDamage());
@@ -780,19 +524,26 @@ public class PantallaJuego extends ScreenAdapter {
         juego.batch.begin();
 
         parallax.render(juego.batch, cameraLeftX, viewW);
+
+        // Templo
+        if (temploX + temploW > cameraLeftX - 2f && temploX < rightX + 2f) {
+            juego.batch.draw(temploRegion, temploX, temploY, temploW, temploH);
+        }
+
         gestorProyectiles.draw(juego.batch, cameraLeftX, viewW);
         gestorEnemigos.render(juego.batch, cameraLeftX, viewW);
         gestorEfectos.draw(juego.batch);
 
-        // TEMPLO: delante del fondo, antes del jugador (jugador queda delante)
-        if (temploRegion != null) {
-            float temploX = anchoNivel - (temploWWorld * (1f - TEMPLO_RIGHT_OVERFLOW_FRAC));
-            float temploY = getSueloY() - (jugador.getHeight(PPU) * TEMPLO_BAJA_Y_FRAC_JUGADOR);
+        // ✅ Solo el jugador se desvanece (sin oscurecer nada)
+        float pr = juego.batch.getColor().r;
+        float pg = juego.batch.getColor().g;
+        float pb = juego.batch.getColor().b;
+        float pa = juego.batch.getColor().a;
 
-            juego.batch.draw(temploRegion, temploX, temploY, temploWWorld, temploHWorld);
-        }
-
+        juego.batch.setColor(1f, 1f, 1f, alphaJugador);
         jugador.draw(juego.batch, PPU);
+
+        juego.batch.setColor(pr, pg, pb, pa);
 
         juego.batch.end();
     }
@@ -817,7 +568,6 @@ public class PantallaJuego extends ScreenAdapter {
         if (golemDeath != null) golemDeath.dispose();
 
         if (rocaTex != null) rocaTex.dispose();
-
         if (venenoAssets != null) venenoAssets.dispose();
 
         if (temploTex != null) temploTex.dispose();

@@ -64,6 +64,41 @@ public class Golem {
     private float rocaH = 1.5f;
     private int rocaDamage = 10;
 
+    // ---------------------------------------------------------
+    // ✅ PARED RUINA + SUELO
+    // ---------------------------------------------------------
+    private float limiteDerecha = Float.POSITIVE_INFINITY;
+    private float sueloY = 2f;
+
+    public void setLimiteDerecha(float limiteDerecha) {
+        this.limiteDerecha = limiteDerecha;
+    }
+
+    public void setSueloY(float sueloY) {
+        this.sueloY = sueloY;
+        this.y = sueloY;
+        hitbox.y = y;
+    }
+
+    private void clampContraPared() {
+        if (limiteDerecha == Float.POSITIVE_INFINITY) return;
+
+        float maxX = limiteDerecha - wWorld;
+        if (x > maxX) x = maxX;
+    }
+
+    // ✅ clave: si el jugador está “más allá” de la pared,
+    // el golem persigue hasta la pared (no se queda a 5.5f tirando rocas).
+    private float getTargetXForAI(Jugador jugador) {
+        float tx = jugador.getX();
+
+        if (limiteDerecha != Float.POSITIVE_INFINITY) {
+            float maxTarget = limiteDerecha - 0.05f; // un pelín antes
+            if (tx > maxTarget) tx = maxTarget;
+        }
+        return tx;
+    }
+
     public Golem(
         float x,
         float sueloY,
@@ -76,6 +111,7 @@ public class Golem {
         float ppu
     ) {
         this.x = x;
+        this.sueloY = sueloY;
         this.y = sueloY;
         this.rocaRegion = rocaRegion;
 
@@ -142,12 +178,16 @@ public class Golem {
     public void update(float delta, Jugador jugador) {
         if (eliminar) return;
 
+        y = sueloY;
+
         if (estado == Estado.DYING) {
             stateTime += delta;
 
             if (deathAnim.isAnimationFinished(stateTime)) {
                 eliminar = true;
             }
+
+            clampContraPared();
 
             hitbox.x = x + (wWorld - hitbox.width) * 0.5f;
             hitbox.y = y;
@@ -158,7 +198,10 @@ public class Golem {
         tThrow -= delta;
         tAttack -= delta;
 
-        float dx = jugador.getX() - x;
+        // ✅ USAR TARGET CLAMPED (clave)
+        float targetX = getTargetXForAI(jugador);
+
+        float dx = targetX - x;
         float dist = Math.abs(dx);
 
         mirandoDerecha = dx > 0f;
@@ -173,6 +216,8 @@ public class Golem {
                 vx = mirandoDerecha ? 0.6f : -0.6f;
                 x += vx * delta;
 
+                clampContraPared();
+
                 if (dist <= attackRange && tAttack <= 0f) {
                     estado = Estado.ATTACK;
                     stateTime = 0f;
@@ -184,6 +229,8 @@ public class Golem {
                 break;
 
             case THROW:
+                clampContraPared();
+
                 if (throwAnim.isAnimationFinished(stateTime)) {
                     tThrow = cdThrow;
                     estado = Estado.WALK;
@@ -192,6 +239,8 @@ public class Golem {
                 break;
 
             case ATTACK:
+                clampContraPared();
+
                 if (attack.isAnimationFinished(stateTime)) {
                     tAttack = cdAttack;
                     estado = Estado.WALK;
@@ -214,7 +263,6 @@ public class Golem {
         rocaLanzada = true;
         float dir = mirandoDerecha ? 1f : -1f;
 
-        // TU spawn desde la mano (se respeta)
         float spawnX = x + wWorld * (mirandoDerecha ? 0.75f : 0.25f);
         float spawnY = y + hWorld * 0.25f;
 

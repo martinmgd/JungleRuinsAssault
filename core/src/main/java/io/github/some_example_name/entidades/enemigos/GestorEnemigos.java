@@ -27,12 +27,9 @@ public class GestorEnemigos {
     private int serpVida = 10;
 
     private float spawnTimerS = 0f;
-    private float spawnIntervalS = 2.2f;
+    private float spawnIntervalS = 2.0f;
 
-    private int maxSerpientes = 6;
-
-    private float spawnMinX = 10f;
-    private float spawnMaxX = 40f;
+    private int maxSerpientes = 4;
 
     private float patrolHalfRange = 2.5f;
 
@@ -56,7 +53,7 @@ public class GestorEnemigos {
     private final Texture pajaroDeath;
 
     private float spawnTimerP = 0f;
-    private float spawnIntervalP = 2.4f;
+    private float spawnIntervalP = 1.2f;
     private int maxPajaros = 2;
 
     private float pajaroYTop = 9.5f;
@@ -89,17 +86,26 @@ public class GestorEnemigos {
     private TextureRegion rocaRegion = null;
 
     private float spawnTimerG = 0f;
-    private float spawnIntervalG = 4.0f;
-    private int maxGolems = 2;
-
-    private float golemSpawnMinX = 10f;
-    private float golemSpawnMaxX = 40f;
+    private float spawnIntervalG = 3.4f;
+    private int maxGolems = 3;
 
     private final float ppu;
 
     // Global
     private float ySuelo = 2f;
     private float yOffsetWorld = 0.0f;
+
+    // Ruina = pared (límite derecha)
+    private float limiteDerecha = Float.POSITIVE_INFINITY;
+
+    private static final float SPAWN_MARGIN_CAM = 2.0f;
+    private static final float MIN_DIST_PLAYER = 4.0f;
+    private static final float RUINA_BUFFER = 0.02f;
+
+    private static final float SERP_ZONE_SIZE = 7.0f;
+    private static final int SERP_MAX_POR_ZONA = 3;
+
+    private static final float DESPAWN_BEHIND = 10.0f;
 
     public GestorEnemigos(Texture serpienteWalk, Texture serpienteDeath,
                           Texture pajaroAttak, Texture pajaroDeath,
@@ -111,11 +117,16 @@ public class GestorEnemigos {
         this.ppu = ppu;
     }
 
+    public void setLimiteDerecha(float limiteDerecha) {
+        this.limiteDerecha = limiteDerecha;
+    }
+
     public void setYsuelo(float ySuelo) {
         this.ySuelo = ySuelo;
 
         for (Serpiente s : serpientes) s.setSueloY(ySuelo);
         for (Pajaro p : pajaros) p.setSueloY(ySuelo);
+        for (Golem g : golems) g.setSueloY(ySuelo);
     }
 
     public void setYOffsetWorld(float yOffsetWorld) {
@@ -123,9 +134,9 @@ public class GestorEnemigos {
 
         for (Serpiente s : serpientes) s.setSueloY(ySuelo);
         for (Pajaro p : pajaros) p.setSueloY(ySuelo);
+        for (Golem g : golems) g.setSueloY(ySuelo);
     }
 
-    // Serpiente
     public void setAnimacion(int frameWpx, int frameHpx, float walkFrameDuration) {
         this.frameWpx = frameWpx;
         this.frameHpx = frameHpx;
@@ -139,9 +150,7 @@ public class GestorEnemigos {
 
     public void setSpawnConfig(float interval, int maxSerpientes, float spawnMinX, float spawnMaxX, float patrolHalfRange) {
         this.spawnIntervalS = Math.max(0.1f, interval);
-        this.maxSerpientes = Math.max(1, maxSerpientes);
-        this.spawnMinX = Math.min(spawnMinX, spawnMaxX);
-        this.spawnMaxX = Math.max(spawnMinX, spawnMaxX);
+        this.maxSerpientes = Math.min(4, Math.max(1, maxSerpientes));
         this.patrolHalfRange = Math.max(0.5f, patrolHalfRange);
     }
 
@@ -164,23 +173,6 @@ public class GestorEnemigos {
         this.venenoH = Math.max(0.10f, venenoH);
     }
 
-    // Pájaro
-    public void setPajaroSizeWorld(float w, float h) {
-        this.pajaroWWorld = Math.max(0.1f, w);
-        this.pajaroHWorld = Math.max(0.1f, h);
-    }
-
-    public void setPajaroAlturaImpacto(float fracAlturaJugador) {
-        this.pajaroMaxBajadaFracJugador = Math.max(0.10f, Math.min(fracAlturaJugador, 1.20f));
-    }
-
-    public void setPajaroMuerteConfig(float deadDelay, float blinkStart, float disappearAt, float blinkPeriod) {
-        this.pajDeadDelay = Math.max(0f, deadDelay);
-        this.pajBlinkStart = Math.max(0f, blinkStart);
-        this.pajDisappearAt = Math.max(this.pajBlinkStart, disappearAt);
-        this.pajBlinkPeriod = Math.max(0.04f, blinkPeriod);
-    }
-
     public void setPajaroConfig(float interval, int maxPajaros,
                                 float yTopPantalla, float spawnMarginX,
                                 float diveSpeed,
@@ -197,7 +189,22 @@ public class GestorEnemigos {
         this.pajaroCdContacto = Math.max(0.05f, cdContacto);
     }
 
-    // Golem
+    public void setPajaroSizeWorld(float w, float h) {
+        this.pajaroWWorld = Math.max(0.1f, w);
+        this.pajaroHWorld = Math.max(0.1f, h);
+    }
+
+    public void setPajaroAlturaImpacto(float fracAlturaJugador) {
+        this.pajaroMaxBajadaFracJugador = Math.max(0.10f, Math.min(fracAlturaJugador, 1.20f));
+    }
+
+    public void setPajaroMuerteConfig(float deadDelay, float blinkStart, float disappearAt, float blinkPeriod) {
+        this.pajDeadDelay = Math.max(0f, deadDelay);
+        this.pajBlinkStart = Math.max(0f, blinkStart);
+        this.pajDisappearAt = Math.max(this.pajBlinkStart, disappearAt);
+        this.pajBlinkPeriod = Math.max(0.04f, blinkPeriod);
+    }
+
     public void setGolemTextures(Texture idle, Texture walk,
                                  Texture throwTex, Texture attack, Texture death) {
         this.golemIdle = idle;
@@ -213,43 +220,55 @@ public class GestorEnemigos {
 
     public void setGolemSpawnConfig(float interval, int maxGolems, float minX, float maxX) {
         this.spawnIntervalG = Math.max(0.1f, interval);
-        this.maxGolems = Math.max(1, maxGolems);
-        this.golemSpawnMinX = Math.min(minX, maxX);
-        this.golemSpawnMaxX = Math.max(minX, maxX);
+        this.maxGolems = Math.min(3, Math.max(1, maxGolems));
     }
 
     public void update(float delta) {
+
         for (int i = serpientes.size - 1; i >= 0; i--) {
             Serpiente s = serpientes.get(i);
             s.update(delta);
             if (s.isEliminar()) serpientes.removeIndex(i);
         }
 
-        spawnTimerS += delta;
-        while (spawnTimerS >= spawnIntervalS) {
-            spawnTimerS -= spawnIntervalS;
-            if (serpientes.size < maxSerpientes) spawnSerpiente();
-            else break;
-        }
-
         for (int i = pajaros.size - 1; i >= 0; i--) {
             if (pajaros.get(i).isEliminar()) pajaros.removeIndex(i);
         }
-        spawnTimerP += delta;
 
         for (int i = golems.size - 1; i >= 0; i--) {
             if (golems.get(i).isEliminar()) golems.removeIndex(i);
         }
+
+        spawnTimerS += delta;
+        spawnTimerP += delta;
         spawnTimerG += delta;
     }
 
     public void updateAtaques(float delta, Jugador jugador, float ppu, float camLeftX, float viewW) {
 
-        Rectangle hbJugador = jugador.getHitbox(ppu);
         float rightX = camLeftX + viewW;
+        Rectangle hbJugador = jugador.getHitbox(ppu);
 
-        // Serpientes
+        float killX = camLeftX - DESPAWN_BEHIND;
+
+        for (int i = serpientes.size - 1; i >= 0; i--) {
+            Serpiente s = serpientes.get(i);
+            if (s.getX() < killX) serpientes.removeIndex(i);
+        }
+
+        for (int i = golems.size - 1; i >= 0; i--) {
+            Golem g = golems.get(i);
+            if (g.getHitbox().x + g.getHitbox().width < killX) golems.removeIndex(i);
+        }
+
+        while (spawnTimerS >= spawnIntervalS) {
+            spawnTimerS -= spawnIntervalS;
+            if (serpientes.size < maxSerpientes) spawnSerpienteCam(camLeftX, viewW, jugador);
+            else break;
+        }
+
         for (Serpiente s : serpientes) {
+            s.setLimiteDerecha(limiteDerecha - RUINA_BUFFER);
             s.tryMordiscoJugador(jugador, hbJugador);
 
             if (venenoRegion != null) {
@@ -273,7 +292,6 @@ public class GestorEnemigos {
             }
         }
 
-        // Pájaros spawn + update
         while (spawnTimerP >= spawnIntervalP) {
             spawnTimerP -= spawnIntervalP;
             if (pajaros.size < maxPajaros) spawnPajaro(camLeftX, viewW, jugador);
@@ -286,38 +304,33 @@ public class GestorEnemigos {
         for (Pajaro p : pajaros) {
             p.setSueloY(ySuelo);
             p.setMinDiveY(minDiveY);
+            p.setLimiteDerecha(limiteDerecha - RUINA_BUFFER);
+
             p.update(delta);
             p.tryDanioContacto(jugador, hbJugador);
         }
 
-        // Golems spawn
-        boolean golemReady =
-            (golemIdle != null && golemWalk != null && golemThrow != null
-                && golemAttack != null && golemDeath != null && rocaRegion != null);
-
-        if (golemReady) {
-            while (spawnTimerG >= spawnIntervalG) {
-                spawnTimerG -= spawnIntervalG;
-                if (golems.size < maxGolems) spawnGolem();
-                else break;
-            }
+        while (spawnTimerG >= spawnIntervalG) {
+            spawnTimerG -= spawnIntervalG;
+            if (golems.size < maxGolems) spawnGolemCam(camLeftX, viewW, jugador);
+            else break;
         }
 
-        // Update golems + rocas
         for (Golem g : golems) {
+            g.setSueloY(ySuelo);
+            g.setLimiteDerecha(limiteDerecha - RUINA_BUFFER);
+
             g.update(delta, jugador);
 
-            ProyectilRoca roca = g.tryThrow();
-            if (roca != null) rocas.add(roca);
+            ProyectilRoca r = g.tryThrow();
+            if (r != null) rocas.add(r);
         }
 
         for (int i = rocas.size - 1; i >= 0; i--) {
             ProyectilRoca r = rocas.get(i);
             r.update(delta);
 
-            if (r.isEliminar()
-                || r.isOutOfRange(camLeftX - 2f, rightX + 2f)
-                || r.isBelow(ySuelo)) {
+            if (r.isEliminar() || r.isOutOfRange(camLeftX - 2f, rightX + 2f) || r.isBelow(ySuelo - 2f)) {
                 rocas.removeIndex(i);
                 continue;
             }
@@ -329,30 +342,102 @@ public class GestorEnemigos {
         }
     }
 
-    private void spawnSerpiente() {
-        float x = MathUtils.random(spawnMinX, spawnMaxX);
+    private void spawnSerpienteCam(float camLeftX, float viewW, Jugador jugador) {
 
-        float pMin = x - patrolHalfRange;
-        float pMax = x + patrolHalfRange;
+        float minX = camLeftX - SPAWN_MARGIN_CAM;
+        float maxX = camLeftX + viewW + SPAWN_MARGIN_CAM;
 
-        Serpiente s = new Serpiente(
-            x, ySuelo,
-            pMin, pMax,
-            serpVelocidad,
-            serpVida,
-            serpienteWalk, frameWpx, frameHpx, walkFrameDuration,
-            serpienteDeath,
-            ppu,
-            yOffsetWorld
-        );
+        maxX = Math.min(maxX, limiteDerecha - 0.40f);
+        if (maxX <= minX + 0.5f) return;
 
-        s.setAtaques(dmgMordisco, cdMordisco, dmgVeneno, cdVeneno);
-        s.setVenenoConfig(venenoRangoMin, venenoRangoMax, velVeneno, venenoW, venenoH);
+        float preferMin = camLeftX + viewW * 0.25f;
+        float preferMax = maxX;
+        if (preferMax <= preferMin + 0.5f) {
+            preferMin = minX;
+            preferMax = maxX;
+        }
 
-        serpientes.add(s);
+        for (int tries = 0; tries < 12; tries++) {
+            float x = MathUtils.random(preferMin, preferMax);
+
+            if (Math.abs(x - jugador.getX()) < MIN_DIST_PLAYER) continue;
+
+            float zoneKey = (float) Math.floor(x / SERP_ZONE_SIZE);
+            int count = 0;
+            for (Serpiente s : serpientes) {
+                float sk = (float) Math.floor(s.getX() / SERP_ZONE_SIZE);
+                if (sk == zoneKey) count++;
+            }
+            if (count >= SERP_MAX_POR_ZONA) continue;
+
+            float pMin = x - patrolHalfRange;
+            float pMax = x + patrolHalfRange;
+
+            pMax = Math.min(pMax, limiteDerecha - 0.10f);
+
+            Serpiente s = new Serpiente(
+                x, ySuelo,
+                pMin, pMax,
+                serpVelocidad,
+                serpVida,
+                serpienteWalk, frameWpx, frameHpx, walkFrameDuration,
+                serpienteDeath,
+                ppu,
+                yOffsetWorld
+            );
+
+            s.setAtaques(dmgMordisco, cdMordisco, dmgVeneno, cdVeneno);
+            s.setVenenoConfig(venenoRangoMin, venenoRangoMax, velVeneno, venenoW, venenoH);
+            s.setLimiteDerecha(limiteDerecha - RUINA_BUFFER);
+
+            serpientes.add(s);
+            return;
+        }
     }
 
-    // Spawn pájaro: elige por qué lado SALE y spawnea por el lado contrario (coherente siempre)
+    private void spawnGolemCam(float camLeftX, float viewW, Jugador jugador) {
+
+        if (golemIdle == null || golemWalk == null || golemThrow == null || golemAttack == null || golemDeath == null) return;
+        if (rocaRegion == null) return;
+
+        float minX = camLeftX - SPAWN_MARGIN_CAM;
+        float maxX = camLeftX + viewW + SPAWN_MARGIN_CAM;
+
+        maxX = Math.min(maxX, limiteDerecha - 0.05f);
+        if (maxX <= minX + 1.0f) return;
+
+        float preferMin = camLeftX + viewW * 0.35f;
+        float preferMax = maxX;
+        if (preferMax <= preferMin + 1.0f) {
+            preferMin = minX;
+            preferMax = maxX;
+        }
+
+        for (int tries = 0; tries < 12; tries++) {
+            float x = MathUtils.random(preferMin, preferMax);
+
+            if (Math.abs(x - jugador.getX()) < MIN_DIST_PLAYER) continue;
+
+            Golem g = new Golem(
+                x,
+                ySuelo,
+                golemIdle,
+                golemWalk,
+                golemThrow,
+                golemAttack,
+                golemDeath,
+                rocaRegion,
+                ppu
+            );
+
+            g.setLimiteDerecha(limiteDerecha - RUINA_BUFFER);
+            g.setSueloY(ySuelo);
+
+            golems.add(g);
+            return;
+        }
+    }
+
     private void spawnPajaro(float camLeftX, float viewW, Jugador jugador) {
 
         boolean salePorDerecha = MathUtils.randomBoolean();
@@ -361,31 +446,34 @@ public class GestorEnemigos {
         float spawnX;
 
         if (salePorDerecha) {
-            exitX = camLeftX + viewW + pajaroSpawnMarginX; // sale por derecha
-            spawnX = camLeftX - pajaroSpawnMarginX;        // spawnea por izquierda
+            exitX = camLeftX + viewW + pajaroSpawnMarginX;
+            spawnX = camLeftX - pajaroSpawnMarginX;
         } else {
-            exitX = camLeftX - pajaroSpawnMarginX;         // sale por izquierda
-            spawnX = camLeftX + viewW + pajaroSpawnMarginX;// spawnea por derecha
+            exitX = camLeftX - pajaroSpawnMarginX;
+            spawnX = camLeftX + viewW + pajaroSpawnMarginX;
         }
 
         float hJ = jugador.getHeight(ppu);
 
-        // Spawn más bajo en el lateral (no arriba)
-        float spawnYTop = pajaroYTop - 5.5f;
+        float spawnYTop = pajaroYTop - 6.5f;
         spawnYTop = Math.max(spawnYTop, ySuelo + 2.0f);
 
-        // Cabeza/cuerpo random
         boolean aCabeza = MathUtils.randomBoolean();
         float passY = aCabeza
             ? (jugador.getY() + hJ * 0.85f)
             : (jugador.getY() + hJ * 0.55f);
 
-        // No apuntar demasiado arriba
         passY = Math.min(passY, spawnYTop - 1.0f);
 
-        // X del giro cerca del jugador (no pegado al borde)
-        float margen = 2.0f;
+        // ✅ CAMBIO MÍNIMO AQUÍ:
+        // antes: margen = 2.0f y turnX se quedaba lejos del borde.
+        // ahora: margen pequeño + clamp por limiteDerecha para permitir llegar hasta la ruina.
+        float margen = 0.6f;
         float turnX = MathUtils.clamp(jugador.getX(), camLeftX + margen, camLeftX + viewW - margen);
+
+        if (limiteDerecha != Float.POSITIVE_INFINITY) {
+            turnX = Math.min(turnX, (limiteDerecha - 0.25f)); // ✅ casi en la pared
+        }
 
         float crossTime = 1.7f;
 
@@ -410,25 +498,9 @@ public class GestorEnemigos {
         p.setVida(6);
         p.setSueloY(ySuelo);
 
+        p.setLimiteDerecha(limiteDerecha - RUINA_BUFFER);
+
         pajaros.add(p);
-    }
-
-    private void spawnGolem() {
-        float x = MathUtils.random(golemSpawnMinX, golemSpawnMaxX);
-
-        Golem g = new Golem(
-            x,
-            ySuelo,
-            golemIdle,
-            golemWalk,
-            golemThrow,
-            golemAttack,
-            golemDeath,
-            rocaRegion,
-            ppu
-        );
-
-        golems.add(g);
     }
 
     public void render(SpriteBatch batch, float camLeftX, float viewW) {
@@ -457,3 +529,4 @@ public class GestorEnemigos {
     public Array<Golem> getGolems() { return golems; }
     public Array<ProyectilRoca> getRocas() { return rocas; }
 }
+

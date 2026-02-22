@@ -67,14 +67,21 @@ public class Serpiente {
     private float venenoW;
     private float venenoH;
 
-    // Guardamos sueloY real para poder eliminar el veneno al caer
     private float sueloY = 2f;
 
-    // Veneno con la física de la roca del golem (PARÁBOLA + ALCANCE).
-    // Si cambias la roca en Golem, dime los valores y los igualamos aquí.
-    private static final float VENENO_VX = 9.5f;       // mismo tipo que roca (más lejos)
+    private static final float VENENO_VX = 9.5f;
     private static final float VENENO_VY = 2.9f;
     private static final float VENENO_GRAVITY = -16.0f;
+
+    // ✅ RUINA = pared (límite derecha)
+    private float limiteDerecha = Float.POSITIVE_INFINITY;
+
+    public void setLimiteDerecha(float limiteDerecha) {
+        this.limiteDerecha = limiteDerecha;
+    }
+
+    // ✅ Para el gestor (zonas + distancia a cámara)
+    public float getX() { return x; }
 
     public Serpiente(
         float x, float sueloY,
@@ -161,11 +168,30 @@ public class Serpiente {
             tAnim += delta;
             x += vx * delta;
 
+            // --- CLAMP CONTRA PARED (ruina) ---
+            // maxX ya viene recortado desde GestorEnemigos, pero además:
+            // evitamos que el HITBOX pase de limiteDerecha.
+            float rightHb = (x + (wWorld - hitbox.width) * 0.5f) + hitbox.width;
+            float limite = maxX; // maxX aquí ya es el "limiteDerecha" pasado desde gestor
+
+            if (rightHb > limite) {
+                float exceso = rightHb - limite;
+                x -= exceso;
+            }
+
+            // ✅ Patrulla base
             if (x < minX) {
                 x = minX;
                 vx = Math.abs(vx);
             } else if (x > maxX) {
                 x = maxX;
+                vx = -Math.abs(vx);
+            }
+
+            // ✅ RUINA = pared: puede llegar pero NO entrar
+            float maxPared = limiteDerecha - wWorld * 0.25f;
+            if (x > maxPared) {
+                x = maxPared;
                 vx = -Math.abs(vx);
             }
 
@@ -211,11 +237,9 @@ public class Serpiente {
         float dir = Math.signum(jx - cx);
         tVeneno = cdVeneno;
 
-        // Sale desde la boca/centro (igual que antes)
         float spawnX = cx;
         float spawnY = y + hWorld * 0.5f;
 
-        // Misma parábola que la roca: vx/vy/gravedad fijos para igualar alcance
         float vxVen = dir * VENENO_VX;
         float vyVen = VENENO_VY;
 
@@ -229,7 +253,7 @@ public class Serpiente {
             venenoW,
             venenoH,
             dmgVeneno,
-            sueloY  // para auto-eliminar cuando caiga
+            sueloY
         );
     }
 
@@ -271,3 +295,5 @@ public class Serpiente {
         }
     }
 }
+
+
