@@ -26,29 +26,29 @@ public class Hud implements Disposable {
 
     private static final int MAX_CORAZONES = 5;
 
-    // Referencia para escalar en pantallas pequeñas
     private static final float REF_W = 1280f;
     private static final float REF_H = 720f;
 
-    // Padding general
     private static final float PAD_X = 22f;
     private static final float PAD_Y = 14f;
 
-    // Tamaño corazones (tú dijiste 40 ok)
     private static final float HEART_PX = 40f;
     private static final float HEART_GAP_PX = 10f;
 
-    // Bajada de la fila superior (corazones y score)
     private static final float TOP_DOWN_PX = 10f;
 
-    // Score más grande
     private static final float SCORE_FONT_SCALE = 2.10f;
-
-    // Reloj grande centrado
     private static final float TIME_FONT_SCALE = 2.30f;
-
-    // Reloj un poco más bajo
     private static final float TIME_TOP_PAD_PX = 34f;
+
+    // ------------------------------------------------------------
+    // BONUS (cartel temporal al terminar)
+    // ------------------------------------------------------------
+    private boolean showBonus = false;
+    private int bonusValue = 0;
+    private float bonusTimer = 0f;
+    private static final float BONUS_SHOW_SECONDS = 2.2f;
+    private static final float BONUS_FONT_SCALE = 1.60f;
 
     public Hud() {
         cam = new OrthographicCamera();
@@ -75,6 +75,24 @@ public class Hud implements Disposable {
 
     public void setTiempoSeg(float tiempoSeg) {
         this.tiempoSeg = Math.max(0f, tiempoSeg);
+    }
+
+    public void showBonusTiempo(int bonus) {
+        if (bonus <= 0) return;
+        showBonus = true;
+        bonusValue = bonus;
+        bonusTimer = BONUS_SHOW_SECONDS;
+    }
+
+    public void clearBonus() {
+        showBonus = false;
+        bonusValue = 0;
+        bonusTimer = 0f;
+    }
+
+    // ✅ NUEVO: para usar el mismo corazón en drops del mundo
+    public TextureRegion getHeartFullRegion() {
+        return assets.heartFull;
     }
 
     private float getUiScale() {
@@ -105,6 +123,16 @@ public class Hud implements Disposable {
         viewport.apply();
         batch.setProjectionMatrix(cam.combined);
 
+        float dt = Gdx.graphics.getDeltaTime();
+        if (showBonus) {
+            bonusTimer -= dt;
+            if (bonusTimer <= 0f) {
+                showBonus = false;
+                bonusValue = 0;
+                bonusTimer = 0f;
+            }
+        }
+
         float scale = getUiScale();
 
         float padX = PAD_X * scale;
@@ -118,9 +146,7 @@ public class Hud implements Disposable {
         float screenW = viewport.getWorldWidth();
         float screenH = viewport.getWorldHeight();
 
-        // ------------------------------------------------------------
-        // CORAZONES (✅ ARRIBA IZQUIERDA)
-        // ------------------------------------------------------------
+        // CORAZONES
         int llenos = getCorazonesLlenos();
 
         float startX = padX;
@@ -135,22 +161,20 @@ public class Hud implements Disposable {
             batch.draw(r, x, yHearts, heartSize, heartSize);
         }
 
-        // ------------------------------------------------------------
-        // SCORE (ARRIBA DERECHA, más grande)
-        // ------------------------------------------------------------
+        // SCORE
         String sScore = Integer.toString(score);
 
         font.getData().setScale(SCORE_FONT_SCALE * scale);
         layout.setText(font, sScore);
 
         float scoreX = screenW - padX - layout.width;
-        float scoreY = yHearts - (14f * scale);
+
+        float yTopUI = screenH - padY - topDown;
+        float scoreY = yTopUI;
 
         font.draw(batch, layout, scoreX, scoreY);
 
-        // ------------------------------------------------------------
-        // TIEMPO (centrado arriba, grande, un poco más bajo)
-        // ------------------------------------------------------------
+        // TIEMPO
         String tStr = formatTiempo(tiempoSeg);
 
         font.getData().setScale(TIME_FONT_SCALE * scale);
@@ -161,7 +185,19 @@ public class Hud implements Disposable {
 
         font.draw(batch, layout, timeX, timeY);
 
-        // restaurar
+        // BONUS TIEMPO
+        if (showBonus && bonusValue > 0) {
+            String bStr = "BONUS +" + bonusValue;
+
+            font.getData().setScale(BONUS_FONT_SCALE * scale);
+            layout.setText(font, bStr);
+
+            float bx = (screenW - layout.width) * 0.5f;
+            float by = timeY - (34f * scale);
+
+            font.draw(batch, layout, bx, by);
+        }
+
         font.getData().setScale(1f);
     }
 

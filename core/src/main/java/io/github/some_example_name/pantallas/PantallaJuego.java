@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureWrap;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ObjectIntMap;
 import com.badlogic.gdx.utils.ObjectSet;
 import com.badlogic.gdx.utils.ScreenUtils;
@@ -26,6 +27,7 @@ import io.github.some_example_name.entidades.jugador.PlayerAnimations;
 import io.github.some_example_name.entidades.proyectiles.jugador.AtaqueEspecial;
 import io.github.some_example_name.entidades.proyectiles.jugador.GestorProyectiles;
 import io.github.some_example_name.entidades.proyectiles.jugador.Proyectil;
+import io.github.some_example_name.utilidades.Configuracion;
 import io.github.some_example_name.utilidades.Constantes;
 import io.github.some_example_name.utilidades.DisparoAssets;
 import io.github.some_example_name.utilidades.Hud;
@@ -35,6 +37,7 @@ import io.github.some_example_name.utilidades.VenenoAssets;
 
 public class PantallaJuego extends ScreenAdapter {
 
+    private boolean inicializado = false;
     private final Main juego;
 
     private OrthographicCamera camara;
@@ -85,7 +88,6 @@ public class PantallaJuego extends ScreenAdapter {
     private float ajusteSueloY = AJUSTE_SUELO_FINAL;
     private float sueloObjetivoY = 0f;
 
-    // ✅ Base que te gustaba (en unidades de mundo, como antes)
     private static final float SUELO_ENTIDADES_UP_BASE = 0.90f;
 
     // ------------------------------------------------------------
@@ -101,9 +103,7 @@ public class PantallaJuego extends ScreenAdapter {
     private float temploY;
 
     private static final float TEMPLO_OUT_RIGHT_FRAC = 0.20f;
-
     private static final float TEMPLO_VIEWPORT_H_FRAC = 0.72f;
-
     private static final float TEMPLO_Y_UP = 0.20f;
 
     private float puertaX0;
@@ -127,6 +127,13 @@ public class PantallaJuego extends ScreenAdapter {
     private static final int PUNTOS_SERPIENTE = 100;
     private static final int PUNTOS_GOLEM = 200;
 
+    // Bonus por tiempo
+    private static final float TIEMPO_OBJETIVO_SEG = 90f;
+    private static final int BONUS_MAX_TIEMPO = 1000;
+
+    private boolean bonusTiempoAplicado = false;
+    private int bonusTiempo = 0;
+
     private static final int HITS_PAJARO = 1;
     private static final int HITS_SERPIENTE = 3;
     private static final int HITS_GOLEM = 5;
@@ -138,6 +145,56 @@ public class PantallaJuego extends ScreenAdapter {
     private final ObjectSet<Pajaro> puntuadoPajaro = new ObjectSet<>();
     private final ObjectSet<Serpiente> puntuadoSerpiente = new ObjectSet<>();
     private final ObjectSet<Golem> puntuadoGolem = new ObjectSet<>();
+
+    // ------------------------------------------------------------
+    // DROPS: corazón cada 10 enemigos
+    // ------------------------------------------------------------
+    private static final int VIDA_POR_CORAZON = 20; // 100 vida / 5 corazones = 20
+    private int enemigosMatados = 0;
+
+    private TextureRegion heartDropRegion;
+    private final Array<HeartDrop> heartDrops = new Array<>();
+    private final Rectangle hbJugadorTmp = new Rectangle();
+
+    private static class HeartDrop {
+        float x, y;
+        float vy;
+        boolean enSuelo = false;
+        boolean eliminar = false;
+
+        // tamaño en mundo (aprox)
+        float w = 0.55f;
+        float h = 0.55f;
+
+        float sueloY;
+
+        HeartDrop(float x, float y, float sueloY) {
+            this.x = x;
+            this.y = y;
+            this.sueloY = sueloY;
+            this.vy = 0f;
+        }
+
+        void update(float delta) {
+            if (eliminar) return;
+
+            if (!enSuelo) {
+                vy += (-18f) * delta;
+                y += vy * delta;
+
+                if (y <= sueloY) {
+                    y = sueloY;
+                    vy = 0f;
+                    enSuelo = true;
+                }
+            }
+        }
+
+        Rectangle getHitbox(Rectangle out) {
+            out.set(x - w * 0.5f, y, w, h);
+            return out;
+        }
+    }
 
     public PantallaJuego(Main juego) {
         this.juego = juego;
@@ -152,7 +209,6 @@ public class PantallaJuego extends ScreenAdapter {
         return parallax.getGroundY() + ajusteSueloY;
     }
 
-    // ✅ Compensación por el alto real del viewport (evita que en móvil/ventana pequeña cambie el “pisar la hierba”)
     private float getSueloEntidadesUpWorld() {
         if (viewport == null) return SUELO_ENTIDADES_UP_BASE;
         float wh = viewport.getWorldHeight();
@@ -228,8 +284,85 @@ public class PantallaJuego extends ScreenAdapter {
         alphaJugador = 1f - t;
     }
 
+    private void aplicarBonusTiempoSiProcede() {
+        if (bonusTiempoAplicado) return;
+
+        float ratio = (TIEMPO_OBJETIVO_SEG - tiempoPartida) / Math.max(0.0001f, TIEMPO_OBJETIVO_SEG);
+        if (ratio < 0f) ratio = 0f;
+        if (ratio > 1f) ratio = 1f;
+
+        bonusTiempo = Math.round(ratio * BONUS_MAX_TIEMPO);
+        score += bonusTiempo;
+
+        bonusTiempoAplicado = true;
+
+        if (hud != null) hud.showBonusTiempo(bonusTiempo);
+    }
+
+    private void onEnemyKilled(float x, float y) {
+        enemigosMatados++;
+
+        if (enemigosMatados % 10 == 0) {
+            float suelo = getSueloEntidadesY();
+            HeartDrop d = new HeartDrop(x, Math.max(y, suelo + 0.6f), suelo);
+            heartDrops.add(d);
+        }
+    }
+
+    private void curarJugador(int amount) {
+        jugador.recibirDanio(-Math.abs(amount));
+    }
+
+    private void updateHeartDrops(float delta) {
+        if (heartDrops.size == 0) return;
+
+        float jx = jugador.getX();
+        float jy = jugador.getY();
+        float jw = jugador.getWidth(PPU);
+        float jh = jugador.getHeight(PPU);
+        hbJugadorTmp.set(jx, jy, jw, jh);
+
+        Rectangle hbDropTmp = new Rectangle();
+
+        for (int i = heartDrops.size - 1; i >= 0; i--) {
+            HeartDrop d = heartDrops.get(i);
+            d.update(delta);
+
+            if (d.eliminar) {
+                heartDrops.removeIndex(i);
+                continue;
+            }
+
+            Rectangle hbD = d.getHitbox(hbDropTmp);
+            if (hbD.overlaps(hbJugadorTmp)) {
+                d.eliminar = true;
+                curarJugador(VIDA_POR_CORAZON);
+                heartDrops.removeIndex(i);
+            }
+        }
+    }
+
+    private void drawHeartDrops() {
+        if (heartDrops.size == 0 || heartDropRegion == null) return;
+
+        for (int i = 0; i < heartDrops.size; i++) {
+            HeartDrop d = heartDrops.get(i);
+            float drawX = d.x - d.w * 0.5f;
+            float drawY = d.y;
+            juego.batch.draw(heartDropRegion, drawX, drawY, d.w, d.h);
+        }
+    }
+
     @Override
     public void show() {
+
+        // IMPORTANTE: si volvemos desde pausa, NO reinicializar nada
+        if (inicializado) return;
+        inicializado = true;
+
+            // ... el resto de tu show() tal cual lo tienes
+
+
         camara = new OrthographicCamera();
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
@@ -307,13 +440,32 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEnemigos.setAnimacion(128, 80, 0.20f);
         gestorEnemigos.setStats(2.0f, 10);
 
-        gestorEnemigos.setSpawnConfig(
-            2.2f,
-            6,
-            2f,
-            anchoNivel - 2f,
-            2.5f
-        );
+        // ------------------------------------------------------------
+        // DIFICULTAD (CORREGIDA):
+        // - EASY = modo fácil = MENOS spawn
+        // - HARD = modo difícil = MÁS spawn (lo que antes era "fácil" en tu sensación)
+        // ------------------------------------------------------------
+        Configuracion.Dificultad d = Configuracion.getDificultad();
+
+        if (d == Configuracion.Dificultad.FACIL) {
+            // MODO FÁCIL: menos enemigos / más lento
+            gestorEnemigos.setSpawnConfig(
+                3.5f,   // más lento
+                3,      // menos simultáneos
+                2f,
+                anchoNivel - 2f,
+                3.5f    // más cooldown / separación
+            );
+        } else {
+            // MODO DIFÍCIL: más enemigos / más rápido (antes era lo “fácil” en tu juego)
+            gestorEnemigos.setSpawnConfig(
+                2.2f,   // más rápido
+                6,      // más simultáneos
+                2f,
+                anchoNivel - 2f,
+                2.5f
+            );
+        }
 
         gestorEnemigos.setYOffsetWorld(0.15f);
 
@@ -343,9 +495,15 @@ public class PantallaJuego extends ScreenAdapter {
         hud.setScore(score);
         hud.setTiempoSeg(tiempoPartida);
 
+        heartDropRegion = hud.getHeartFullRegion();
+
+        score = 0;
         tiempoPartida = 0f;
         nivelTerminado = false;
         enPausa = false;
+
+        bonusTiempoAplicado = false;
+        bonusTiempo = 0;
 
         hitsPajaro.clear();
         hitsSerpiente.clear();
@@ -353,6 +511,9 @@ public class PantallaJuego extends ScreenAdapter {
         puntuadoPajaro.clear();
         puntuadoSerpiente.clear();
         puntuadoGolem.clear();
+
+        enemigosMatados = 0;
+        heartDrops.clear();
     }
 
     @Override
@@ -398,6 +559,15 @@ public class PantallaJuego extends ScreenAdapter {
     @Override
     public void render(float delta) {
 
+        // ------------------------------------------------------------
+        // PAUSA: ESC o P abre el menú de pausa
+        // (al hacer setScreen, hacemos return para no seguir la lógica este frame)
+        // ------------------------------------------------------------
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.P)) {
+            juego.setScreen(new PantallaPausa(juego, this));
+            return;
+        }
+
         if (!enPausa && !nivelTerminado) {
             tiempoPartida += delta;
         }
@@ -426,6 +596,7 @@ public class PantallaJuego extends ScreenAdapter {
 
         if (!nivelTerminado && alphaJugador <= 0.01f) {
             nivelTerminado = true;
+            aplicarBonusTiempoSiProcede();
         }
 
         gestorEnemigos.setYsuelo(getSueloEntidadesY());
@@ -491,8 +662,13 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEnemigos.updateAtaques(delta, jugador, PPU, cameraLeftX, viewW);
         gestorEfectos.update(delta);
 
+        updateHeartDrops(delta);
+
+        // ------------------------------------------------------------
+        // DISPAROS NORMALES
+        // ------------------------------------------------------------
         for (Serpiente s : gestorEnemigos.getSerpientes()) {
-            if (s.isDead()) continue;
+            if (s.isDying()) continue;
 
             for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
                 Proyectil p = gestorProyectiles.getNormales().get(i);
@@ -504,11 +680,14 @@ public class PantallaJuego extends ScreenAdapter {
                     hitsSerpiente.put(s, hs);
 
                     if (hs >= HITS_SERPIENTE) {
-                        s.recibirDanio(999999);
                         if (!puntuadoSerpiente.contains(s)) {
                             score += PUNTOS_SERPIENTE;
                             puntuadoSerpiente.add(s);
+
+                            Rectangle hbS = s.getHitbox();
+                            onEnemyKilled(hbS.x + hbS.width * 0.5f, hbS.y);
                         }
+                        s.recibirDanio(999999);
                     }
 
                     Rectangle hb = p.getHitbox();
@@ -538,9 +717,12 @@ public class PantallaJuego extends ScreenAdapter {
 
                     if (hbHits >= HITS_PAJARO) {
                         b.recibirDanio(999999);
-                        if (!puntuadoPajaro.contains(b)) {
+                        if (!puntuadoPajaro.contains(b) && b.isDead()) {
                             score += PUNTOS_PAJARO;
                             puntuadoPajaro.add(b);
+
+                            Rectangle hbB = b.getHitbox(PPU);
+                            onEnemyKilled(hbB.x + hbB.width * 0.5f, hbB.y);
                         }
                     }
 
@@ -571,9 +753,12 @@ public class PantallaJuego extends ScreenAdapter {
 
                     if (hg >= HITS_GOLEM) {
                         g.recibirDanio(999999);
-                        if (!puntuadoGolem.contains(g)) {
+                        if (!puntuadoGolem.contains(g) && g.isDead()) {
                             score += PUNTOS_GOLEM;
                             puntuadoGolem.add(g);
+
+                            Rectangle hbG = g.getHitbox();
+                            onEnemyKilled(hbG.x + hbG.width * 0.5f, hbG.y);
                         }
                     }
 
@@ -590,21 +775,57 @@ public class PantallaJuego extends ScreenAdapter {
             }
         }
 
+        // ------------------------------------------------------------
+        // ATAQUE ESPECIAL: DAÑO + PUNTOS + CONTEO KILLS
+        // ------------------------------------------------------------
         AtaqueEspecial esp = gestorProyectiles.getEspecial();
         if (esp != null) {
             Rectangle hbRayo = esp.getHitbox();
             if (hbRayo != null) {
+
                 for (Serpiente s : gestorEnemigos.getSerpientes()) {
-                    if (s.isDead()) continue;
-                    if (s.getHitbox().overlaps(hbRayo)) s.recibirDanio(esp.getDamage());
+                    if (s.isDying()) continue;
+
+                    if (s.getHitbox().overlaps(hbRayo)) {
+                        s.recibirDanio(esp.getDamage());
+                        if (!puntuadoSerpiente.contains(s) && s.isDying()) {
+                            score += PUNTOS_SERPIENTE;
+                            puntuadoSerpiente.add(s);
+
+                            Rectangle hbS = s.getHitbox();
+                            onEnemyKilled(hbS.x + hbS.width * 0.5f, hbS.y);
+                        }
+                    }
                 }
+
                 for (Pajaro b : gestorEnemigos.getPajaros()) {
                     if (b.isDead()) continue;
-                    if (b.getHitbox(PPU).overlaps(hbRayo)) b.recibirDanio(esp.getDamage());
+
+                    if (b.getHitbox(PPU).overlaps(hbRayo)) {
+                        b.recibirDanio(esp.getDamage());
+                        if (!puntuadoPajaro.contains(b) && b.isDead()) {
+                            score += PUNTOS_PAJARO;
+                            puntuadoPajaro.add(b);
+
+                            Rectangle hbB = b.getHitbox(PPU);
+                            onEnemyKilled(hbB.x + hbB.width * 0.5f, hbB.y);
+                        }
+                    }
                 }
+
                 for (Golem g : gestorEnemigos.getGolems()) {
                     if (g.isDead()) continue;
-                    if (g.getHitbox().overlaps(hbRayo)) g.recibirDanio(esp.getDamage());
+
+                    if (g.getHitbox().overlaps(hbRayo)) {
+                        g.recibirDanio(esp.getDamage());
+                        if (!puntuadoGolem.contains(g) && g.isDead()) {
+                            score += PUNTOS_GOLEM;
+                            puntuadoGolem.add(g);
+
+                            Rectangle hbG = g.getHitbox();
+                            onEnemyKilled(hbG.x + hbG.width * 0.5f, hbG.y);
+                        }
+                    }
                 }
             }
         }
@@ -616,6 +837,8 @@ public class PantallaJuego extends ScreenAdapter {
         if (temploX + temploW > cameraLeftX - 2f && temploX < rightX + 2f) {
             juego.batch.draw(temploRegion, temploX, temploY, temploW, temploH);
         }
+
+        drawHeartDrops();
 
         gestorProyectiles.draw(juego.batch, cameraLeftX, viewW);
         gestorEnemigos.render(juego.batch, cameraLeftX, viewW);

@@ -168,11 +168,11 @@ public class Serpiente {
             tAnim += delta;
             x += vx * delta;
 
-            // ✅ Patrulla estable: de minX a maxX
+            // Patrulla estable: de minX a maxX
             float min = minX;
             float max = maxX;
 
-            // ✅ Si hay pared (ruina), se puede llegar pero no entrar
+            // Si hay pared (ruina), se puede llegar pero no entrar
             if (limiteDerecha != Float.POSITIVE_INFINITY) {
                 float maxPared = limiteDerecha - wWorld * 0.25f;
                 max = Math.min(max, maxPared);
@@ -277,7 +277,14 @@ public class Serpiente {
 
     public Rectangle getHitbox() { return hitbox; }
     public boolean isEliminar() { return eliminar; }
+
+    // OJO: "dead" aquí es cuando ya entró al estado DEAD
     public boolean isDead() { return estado == Estado.DEAD; }
+
+    // ✅ NUEVO: sirve para puntuar justo cuando la matas (incluye el delay)
+    public boolean isDying() {
+        return estado == Estado.DEAD || preDeathTimer > 0f;
+    }
 
     public void recibirDanio(int dmg) {
         if (estado != Estado.WALK) return;

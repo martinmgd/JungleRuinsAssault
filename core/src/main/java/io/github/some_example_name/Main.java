@@ -2,21 +2,22 @@ package io.github.some_example_name;
 
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+
 import io.github.some_example_name.pantallas.PantallaJuego;
+import io.github.some_example_name.utilidades.Idiomas;
 
-
-/** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
-/**
- * Clase principal del juego. Gestiona el SpriteBatch y el cambio entre pantallas.
- */
 public class Main extends Game {
 
-    /** SpriteBatch compartido por todas las pantallas. */
     public SpriteBatch batch;
 
     @Override
     public void create() {
         batch = new SpriteBatch();
+
+        // Cargar bundle i18n al iniciar
+        Idiomas.cargar();
+
+        // Por ahora sigues entrando al juego
         setScreen(new PantallaJuego(this));
     }
 
@@ -26,4 +27,3 @@ public class Main extends Game {
         if (batch != null) batch.dispose();
     }
 }
-
