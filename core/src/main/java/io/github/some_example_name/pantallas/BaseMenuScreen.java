@@ -35,6 +35,8 @@ public abstract class BaseMenuScreen extends ScreenAdapter {
     protected BitmapFont fontItem;
     protected GlyphLayout layout = new GlyphLayout();
 
+    protected float factorEscaladoFuente;
+
     // textura 1x1 para dibujar rectángulos (panel, bordes, highlight)
     protected Texture pixel;
 
@@ -56,16 +58,24 @@ public abstract class BaseMenuScreen extends ScreenAdapter {
         viewport = new FitViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camera);
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
-        fontTitle = new BitmapFont();
-        fontItem  = new BitmapFont();
+        // Fuente externa generada con Hiero (.fnt + .png)
+        // Asegúrate de tener en assets/fonts/ el Jersey10.fnt y todos sus png
+        fontTitle = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
+        fontItem = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
 
-        // Filtro LINEAR para que no se vea “a cuadros” al escalar
-        fontTitle.getRegion().getTexture().setFilter(TextureFilter.Linear, TextureFilter.Linear);
-        fontItem.getRegion().getTexture().setFilter(TextureFilter.Linear, TextureFilter.Linear);
+        // Densidad de la pantalla del dispositivo (apuntes)
+        float dpiScale = Gdx.graphics.getDensity();
 
-        // Escalas más “seguros” (y el posicionamiento lo haremos por % del panel)
-        fontTitle.getData().setScale(2.0f);
-        fontItem.getData().setScale(1.4f);
+        // Factor para trabajar con unidades del mundo y no con píxeles
+        factorEscaladoFuente = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
+
+        // Escalado base (ajusta si quieres más grande/pequeño)
+        fontTitle.getData().setScale(factorEscaladoFuente * 2.0f);
+        fontItem.getData().setScale(factorEscaladoFuente * 1.4f);
+
+        // Filtro: Nearest para mantener estilo pixelado
+        fontTitle.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
+        fontItem.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
 
         // pixel blanco 1x1
         Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
@@ -76,14 +86,21 @@ public abstract class BaseMenuScreen extends ScreenAdapter {
 
         // panel centrado en mundo
         panelW = Constantes.ANCHO_MUNDO * 0.72f;
-        panelH = Constantes.ALTO_MUNDO  * 0.62f;
+        panelH = Constantes.ALTO_MUNDO * 0.62f;
         panelX = (Constantes.ANCHO_MUNDO - panelW) * 0.5f;
-        panelY = (Constantes.ALTO_MUNDO  - panelH) * 0.5f;
+        panelY = (Constantes.ALTO_MUNDO - panelH) * 0.5f;
     }
 
     @Override
     public void resize(int width, int height) {
         if (viewport != null) viewport.update(width, height, true);
+
+        // Recalcular factor por si cambian dimensiones
+        float dpiScale = Gdx.graphics.getDensity();
+        factorEscaladoFuente = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
+
+        if (fontTitle != null) fontTitle.getData().setScale(factorEscaladoFuente * 2.0f);
+        if (fontItem != null) fontItem.getData().setScale(factorEscaladoFuente * 1.4f);
     }
 
     @Override

@@ -5,6 +5,8 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
@@ -22,6 +24,8 @@ public class PantallaMuerte extends ScreenAdapter {
     private Viewport viewport;
     private BitmapFont font;
 
+    private float factorEscaladoFuente;
+
     private int selected = 0;
     // 0: Reiniciar, 1: Menú
     private static final int ITEM_COUNT = 2;
@@ -36,12 +40,20 @@ public class PantallaMuerte extends ScreenAdapter {
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
-        font = new BitmapFont();
+        // Fuente externa generada con Hiero (.fnt + .png)
+        // Asegúrate de tener en assets/fonts/ el Jersey10.fnt y todos sus png
+        font = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
+
         font.setUseIntegerPositions(false);
+
         float dpiScale = Gdx.graphics.getDensity();
-        float factor = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
-        font.getData().setScale(factor * 2.2f);
+        factorEscaladoFuente = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
+
+        font.getData().setScale(factorEscaladoFuente * 2.2f);
         font.setColor(Color.WHITE);
+
+        // Filtro: Nearest para estilo pixelado
+        font.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
 
         Idiomas.get();
     }
@@ -99,6 +111,7 @@ public class PantallaMuerte extends ScreenAdapter {
     private void drawItem(int idx, String text, float y) {
         String prefix = (idx == selected) ? "> " : "  ";
         String line = prefix + text;
+
         if (idx == selected) font.setColor(1f, 0.85f, 0.2f, 1f);
         else font.setColor(Color.WHITE);
 

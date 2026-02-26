@@ -5,6 +5,8 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
@@ -23,6 +25,8 @@ public class PantallaOpciones extends ScreenAdapter {
     private Viewport viewport;
     private BitmapFont font;
 
+    private float factorEscaladoFuente;
+
     private int selected = 0;
 
     // 0: Idioma, 1: Dificultad, 2: Volver
@@ -38,12 +42,20 @@ public class PantallaOpciones extends ScreenAdapter {
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
-        font = new BitmapFont();
+        // Fuente externa generada con Hiero (.fnt + .png)
+        // Asegúrate de tener en assets/fonts/ el Jersey10.fnt y todos sus png
+        font = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
+
         font.setUseIntegerPositions(false);
+
         float dpiScale = Gdx.graphics.getDensity();
-        float factor = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
-        font.getData().setScale(factor * 2.0f);
+        factorEscaladoFuente = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
+
+        font.getData().setScale(factorEscaladoFuente * 2.0f);
         font.setColor(Color.WHITE);
+
+        // Filtro: Nearest para estilo pixelado
+        font.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
 
         Idiomas.get();
     }
@@ -87,13 +99,15 @@ public class PantallaOpciones extends ScreenAdapter {
         drawItem(2, safeT("back", "Volver"), baseY - step * 2);
 
         String hint = safeT("options_hint", "←→ cambia, ↑↓ selecciona, ENTER acepta, ESC vuelve");
-        font.getData().setScale(font.getData().scaleX * 0.85f, font.getData().scaleY * 0.85f);
+
+        float originalScaleX = font.getData().scaleX;
+        float originalScaleY = font.getData().scaleY;
+
+        font.getData().setScale(originalScaleX * 0.85f, originalScaleY * 0.85f);
         drawCentered(hint, viewport.getWorldHeight() * 0.15f);
 
         // restaurar scale
-        float dpiScale = Gdx.graphics.getDensity();
-        float factor = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
-        font.getData().setScale(factor * 2.0f);
+        font.getData().setScale(originalScaleX, originalScaleY);
 
         juego.batch.end();
     }
@@ -151,6 +165,7 @@ public class PantallaOpciones extends ScreenAdapter {
     private void drawItem(int idx, String text, float y) {
         String prefix = (idx == selected) ? "> " : "  ";
         String line = prefix + text;
+
         if (idx == selected) font.setColor(1f, 0.85f, 0.2f, 1f);
         else font.setColor(Color.WHITE);
 

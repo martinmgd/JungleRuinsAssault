@@ -29,7 +29,7 @@ public class GestorEnemigos {
     private float spawnTimerS = 0f;
     private float spawnIntervalS = 2.0f;
 
-    private int maxSerpientes = 4;
+    private int maxSerpientes = 3;
 
     private float patrolHalfRange = 2.5f;
 
@@ -87,7 +87,7 @@ public class GestorEnemigos {
 
     private float spawnTimerG = 0f;
     private float spawnIntervalG = 3.4f;
-    private int maxGolems = 3;
+    private int maxGolems = 2;
 
     private final float ppu;
 

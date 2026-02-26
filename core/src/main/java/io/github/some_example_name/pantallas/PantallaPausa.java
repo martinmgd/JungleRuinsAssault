@@ -3,6 +3,7 @@ package io.github.some_example_name.pantallas;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
@@ -25,6 +26,8 @@ public class PantallaPausa extends ScreenAdapter {
     private BitmapFont fontItem;
     private GlyphLayout layout;
 
+    private float factorEscaladoFuente;
+
     private Texture pixel;
 
     private int seleccionado = 0;
@@ -42,14 +45,27 @@ public class PantallaPausa extends ScreenAdapter {
         camera.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         camera.update();
 
-        fontTitle = new BitmapFont();
-        fontItem = new BitmapFont();
+        // Fuente externa generada con Hiero (.fnt + .png)
+        fontTitle = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
+        fontItem = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
 
-        fontTitle.getRegion().getTexture().setFilter(TextureFilter.Linear, TextureFilter.Linear);
-        fontItem.getRegion().getTexture().setFilter(TextureFilter.Linear, TextureFilter.Linear);
+        // Densidad de la pantalla del dispositivo (apuntes)
+        float dpiScale = Gdx.graphics.getDensity();
 
-        fontTitle.getData().setScale(3f);
-        fontItem.getData().setScale(2f);
+        // Factor para trabajar con unidades del "mundo" y no con píxeles (adaptado a esta pantalla)
+        factorEscaladoFuente = (camera.viewportHeight / Gdx.graphics.getHeight()) * dpiScale;
+
+        // Escalado (similar a apuntes)
+        fontTitle.getData().setScale(factorEscaladoFuente * 2f);
+        fontItem.getData().setScale(factorEscaladoFuente * 1.4f);
+
+        // Color (puedes dejarlo en blanco)
+        fontTitle.setColor(Color.WHITE);
+        fontItem.setColor(Color.WHITE);
+
+        // Filtro: si quieres más "pixel", usa Nearest; si quieres suavizado, Linear
+        fontTitle.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
+        fontItem.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
 
         layout = new GlyphLayout();
 
@@ -142,8 +158,8 @@ public class PantallaPausa extends ScreenAdapter {
 
     @Override
     public void dispose() {
-        fontTitle.dispose();
-        fontItem.dispose();
-        pixel.dispose();
+        if (fontTitle != null) fontTitle.dispose();
+        if (fontItem != null) fontItem.dispose();
+        if (pixel != null) pixel.dispose();
     }
 }

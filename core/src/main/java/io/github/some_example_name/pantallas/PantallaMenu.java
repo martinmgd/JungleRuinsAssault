@@ -5,6 +5,8 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
@@ -23,6 +25,8 @@ public class PantallaMenu extends ScreenAdapter {
 
     private BitmapFont font;
 
+    private float factorEscaladoFuente;
+
     private int selected = 0;
 
     // 0: Jugar, 1: Opciones, 2: Salir
@@ -38,12 +42,20 @@ public class PantallaMenu extends ScreenAdapter {
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
-        font = new BitmapFont();
+        // Fuente externa generada con Hiero (.fnt + .png)
+        // Asegúrate de tener en assets/fonts/ el Jersey10.fnt y todos sus png
+        font = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
+
         font.setUseIntegerPositions(false);
+
         float dpiScale = Gdx.graphics.getDensity();
-        float factor = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
-        font.getData().setScale(factor * 2.2f);
+        factorEscaladoFuente = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
+
+        font.getData().setScale(factorEscaladoFuente * 2.2f);
         font.setColor(Color.WHITE);
+
+        // Filtro: Nearest para estilo pixelado
+        font.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
 
         // Asegura que el bundle está cargado (por si llegas aquí desde otra pantalla)
         Idiomas.get();
@@ -74,12 +86,15 @@ public class PantallaMenu extends ScreenAdapter {
 
         // Hint
         String hint = safeT("menu_hint", "↑↓ para elegir, ENTER para aceptar");
-        font.getData().setScale(font.getData().scaleX * 0.85f, font.getData().scaleY * 0.85f);
+
+        float originalScaleX = font.getData().scaleX;
+        float originalScaleY = font.getData().scaleY;
+
+        font.getData().setScale(originalScaleX * 0.85f, originalScaleY * 0.85f);
         drawCentered(hint, viewport.getWorldHeight() * 0.15f);
+
         // volver al scale original
-        float dpiScale = Gdx.graphics.getDensity();
-        float factor = (viewport.getWorldHeight() / Gdx.graphics.getHeight()) * dpiScale;
-        font.getData().setScale(factor * 2.2f);
+        font.getData().setScale(originalScaleX, originalScaleY);
 
         juego.batch.end();
     }
@@ -120,6 +135,7 @@ public class PantallaMenu extends ScreenAdapter {
     private void drawItem(int idx, String text, float y) {
         String prefix = (idx == selected) ? "> " : "  ";
         String line = prefix + text;
+
         if (idx == selected) font.setColor(1f, 0.85f, 0.2f, 1f);
         else font.setColor(Color.WHITE);
 
@@ -128,8 +144,6 @@ public class PantallaMenu extends ScreenAdapter {
     }
 
     private void drawCentered(String text, float y) {
-        float w = font.getRegion().getRegionWidth(); // no real width of text, but ok; we center roughly with layout below
-        // Mejor: usar GlyphLayout
         com.badlogic.gdx.graphics.g2d.GlyphLayout layout = new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, text);
         float x = (viewport.getWorldWidth() - layout.width) * 0.5f;
         font.draw(juego.batch, layout, x, y);
