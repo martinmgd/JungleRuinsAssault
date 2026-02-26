@@ -3,7 +3,7 @@ package io.github.some_example_name;
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
-import io.github.some_example_name.pantallas.PantallaJuego;
+import io.github.some_example_name.pantallas.PantallaMenu;
 import io.github.some_example_name.utilidades.Idiomas;
 
 public class Main extends Game {
@@ -17,8 +17,8 @@ public class Main extends Game {
         // Cargar bundle i18n al iniciar
         Idiomas.cargar();
 
-        // Por ahora sigues entrando al juego
-        setScreen(new PantallaJuego(this));
+        // Iniciar en el menú
+        setScreen(new PantallaMenu(this));
     }
 
     @Override

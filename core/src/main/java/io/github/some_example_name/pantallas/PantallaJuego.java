@@ -104,7 +104,6 @@ public class PantallaJuego extends ScreenAdapter {
 
     private static final float TEMPLO_OUT_RIGHT_FRAC = 0.20f;
     private static final float TEMPLO_VIEWPORT_H_FRAC = 0.72f;
-    private static final float TEMPLO_Y_UP = 0.20f;
 
     private float puertaX0;
     private float puertaX1;
@@ -112,6 +111,10 @@ public class PantallaJuego extends ScreenAdapter {
     private float limiteEnemigosDerecha;
 
     private float alphaJugador = 1f;
+
+    // Trigger borde derecho (fade antes, transición al final)
+    private float fadeStartX;
+    private float fadeEndX;
 
     // ------------------------------------------------------------
     // HUD + TIEMPO + PUNTUACIÓN
@@ -127,7 +130,6 @@ public class PantallaJuego extends ScreenAdapter {
     private static final int PUNTOS_SERPIENTE = 100;
     private static final int PUNTOS_GOLEM = 200;
 
-    // Bonus por tiempo
     private static final float TIEMPO_OBJETIVO_SEG = 90f;
     private static final int BONUS_MAX_TIEMPO = 1000;
 
@@ -149,7 +151,7 @@ public class PantallaJuego extends ScreenAdapter {
     // ------------------------------------------------------------
     // DROPS: corazón cada 10 enemigos
     // ------------------------------------------------------------
-    private static final int VIDA_POR_CORAZON = 20; // 100 vida / 5 corazones = 20
+    private static final int VIDA_POR_CORAZON = 20;
     private int enemigosMatados = 0;
 
     private TextureRegion heartDropRegion;
@@ -162,7 +164,6 @@ public class PantallaJuego extends ScreenAdapter {
         boolean enSuelo = false;
         boolean eliminar = false;
 
-        // tamaño en mundo (aprox)
         float w = 0.55f;
         float h = 0.55f;
 
@@ -230,9 +231,6 @@ public class PantallaJuego extends ScreenAdapter {
         float minX = 0f;
         float maxX = anchoNivel - playerW;
 
-        float maxPuerta = puertaX1 - playerW * 0.55f;
-        if (maxPuerta > 0f) maxX = Math.min(maxX, maxPuerta);
-
         if (maxX < minX) maxX = minX;
 
         float x = jugador.getX();
@@ -256,30 +254,34 @@ public class PantallaJuego extends ScreenAdapter {
 
         temploX = anchoNivel - temploW * (1f - TEMPLO_OUT_RIGHT_FRAC);
 
-        float hJ = jugador.getHeight(PPU);
-        temploY = getSueloY() - hJ * 0.90f + TEMPLO_Y_UP;
+        // Anclado al suelo del nivel (ya no queda “alto”)
+        temploY = getSueloY() - 1.11f;
 
         puertaX0 = temploX + temploW * 0.47f;
         puertaX1 = temploX + temploW * 0.63f;
 
         limiteEnemigosDerecha = temploX;
         gestorEnemigos.setLimiteDerecha(limiteEnemigosDerecha);
+
+        float playerW = jugador.getWidth(PPU);
+        fadeEndX = anchoNivel - playerW;           // margen derecho real
+        fadeStartX = fadeEndX - playerW * 1.2f;    // empieza a desaparecer antes
+        if (fadeStartX < 0f) fadeStartX = 0f;
     }
 
     private void actualizarAlphaEntradaTemplo() {
-        float playerW = jugador.getWidth(PPU);
-        float cx = jugador.getX() + playerW * 0.5f;
+        float x = jugador.getX();
 
-        if (cx <= puertaX0) {
+        if (x <= fadeStartX) {
             alphaJugador = 1f;
             return;
         }
-        if (cx >= puertaX1) {
+        if (x >= fadeEndX) {
             alphaJugador = 0f;
             return;
         }
 
-        float t = (cx - puertaX0) / Math.max(0.0001f, (puertaX1 - puertaX0));
+        float t = (x - fadeStartX) / Math.max(0.0001f, (fadeEndX - fadeStartX));
         t = Math.max(0f, Math.min(1f, t));
         alphaJugador = 1f - t;
     }
@@ -356,12 +358,8 @@ public class PantallaJuego extends ScreenAdapter {
     @Override
     public void show() {
 
-        // IMPORTANTE: si volvemos desde pausa, NO reinicializar nada
         if (inicializado) return;
         inicializado = true;
-
-            // ... el resto de tu show() tal cual lo tienes
-
 
         camara = new OrthographicCamera();
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
@@ -440,45 +438,18 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEnemigos.setAnimacion(128, 80, 0.20f);
         gestorEnemigos.setStats(2.0f, 10);
 
-        // ------------------------------------------------------------
-        // DIFICULTAD (CORREGIDA):
-        // - EASY = modo fácil = MENOS spawn
-        // - HARD = modo difícil = MÁS spawn (lo que antes era "fácil" en tu sensación)
-        // ------------------------------------------------------------
         Configuracion.Dificultad d = Configuracion.getDificultad();
 
         if (d == Configuracion.Dificultad.FACIL) {
-            // MODO FÁCIL: menos enemigos / más lento
-            gestorEnemigos.setSpawnConfig(
-                3.5f,   // más lento
-                3,      // menos simultáneos
-                2f,
-                anchoNivel - 2f,
-                3.5f    // más cooldown / separación
-            );
+            gestorEnemigos.setSpawnConfig(3.5f, 3, 2f, anchoNivel - 2f, 3.5f);
         } else {
-            // MODO DIFÍCIL: más enemigos / más rápido (antes era lo “fácil” en tu juego)
-            gestorEnemigos.setSpawnConfig(
-                2.2f,   // más rápido
-                6,      // más simultáneos
-                2f,
-                anchoNivel - 2f,
-                2.5f
-            );
+            gestorEnemigos.setSpawnConfig(2.2f, 6, 2f, anchoNivel - 2f, 2.5f);
         }
 
         gestorEnemigos.setYOffsetWorld(0.15f);
 
         float yTopPantalla = getSueloEntidadesY() + viewport.getWorldHeight() + 0.5f;
-        gestorEnemigos.setPajaroConfig(
-            2.4f,
-            2,
-            yTopPantalla,
-            0.8f,
-            12.0f,
-            12,
-            0.60f
-        );
+        gestorEnemigos.setPajaroConfig(2.4f, 2, yTopPantalla, 0.8f, 12.0f, 12, 0.60f);
 
         venenoAssets = new VenenoAssets();
         gestorEnemigos.setVenenoRegion(venenoAssets.veneno);
@@ -540,15 +511,7 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEnemigos.setYsuelo(sueloDespues);
 
         float yTopPantalla = sueloDespues + viewport.getWorldHeight() + 0.5f;
-        gestorEnemigos.setPajaroConfig(
-            2.4f,
-            2,
-            yTopPantalla,
-            0.8f,
-            12.0f,
-            12,
-            0.60f
-        );
+        gestorEnemigos.setPajaroConfig(2.4f, 2, yTopPantalla, 0.8f, 12.0f, 12, 0.60f);
 
         configurarTemplo();
         clampJugadorEnNivel();
@@ -559,13 +522,21 @@ public class PantallaJuego extends ScreenAdapter {
     @Override
     public void render(float delta) {
 
-        // ------------------------------------------------------------
-        // PAUSA: ESC o P abre el menú de pausa
-        // (al hacer setScreen, hacemos return para no seguir la lógica este frame)
-        // ------------------------------------------------------------
+        // PAUSA
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.P)) {
             juego.setScreen(new PantallaPausa(juego, this));
             return;
+        }
+
+        // TECLA 2: teleporta justo antes del trigger (para probar fade + transición)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
+            // si aún no está calculado por cualquier motivo, recalculamos
+            if (fadeEndX <= 0f) configurarTemplo();
+
+            float playerW = jugador.getWidth(PPU);
+            float x = fadeEndX - playerW * 0.9f; // dentro de la zona de fade, pero no en el borde
+            if (x < 0f) x = 0f;
+            jugador.setX(x);
         }
 
         if (!enPausa && !nivelTerminado) {
@@ -594,9 +565,12 @@ public class PantallaJuego extends ScreenAdapter {
         clampJugadorEnNivel();
         actualizarAlphaEntradaTemplo();
 
-        if (!nivelTerminado && alphaJugador <= 0.01f) {
+        // Transición SOLO pegado al margen derecho y ya invisible
+        if (!nivelTerminado && alphaJugador <= 0.01f && jugador.getX() >= fadeEndX - 0.001f) {
             nivelTerminado = true;
             aplicarBonusTiempoSiProcede();
+            juego.setScreen(new PantallaSalaJefe(juego, jugador));
+            return;
         }
 
         gestorEnemigos.setYsuelo(getSueloEntidadesY());
@@ -649,186 +623,15 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEnemigos.update(delta);
 
         float yTopPantalla = getSueloEntidadesY() + viewport.getWorldHeight() + 0.5f;
-        gestorEnemigos.setPajaroConfig(
-            2.4f,
-            2,
-            yTopPantalla,
-            0.8f,
-            12.0f,
-            12,
-            0.60f
-        );
+        gestorEnemigos.setPajaroConfig(2.4f, 2, yTopPantalla, 0.8f, 12.0f, 12, 0.60f);
 
         gestorEnemigos.updateAtaques(delta, jugador, PPU, cameraLeftX, viewW);
         gestorEfectos.update(delta);
 
         updateHeartDrops(delta);
 
-        // ------------------------------------------------------------
-        // DISPAROS NORMALES
-        // ------------------------------------------------------------
-        for (Serpiente s : gestorEnemigos.getSerpientes()) {
-            if (s.isDying()) continue;
-
-            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
-                Proyectil p = gestorProyectiles.getNormales().get(i);
-                if (p.isEliminar()) continue;
-
-                if (s.getHitbox().overlaps(p.getHitbox())) {
-
-                    int hs = hitsSerpiente.get(s, 0) + 1;
-                    hitsSerpiente.put(s, hs);
-
-                    if (hs >= HITS_SERPIENTE) {
-                        if (!puntuadoSerpiente.contains(s)) {
-                            score += PUNTOS_SERPIENTE;
-                            puntuadoSerpiente.add(s);
-
-                            Rectangle hbS = s.getHitbox();
-                            onEnemyKilled(hbS.x + hbS.width * 0.5f, hbS.y);
-                        }
-                        s.recibirDanio(999999);
-                    }
-
-                    Rectangle hb = p.getHitbox();
-                    float cy = hb.y + hb.height * 0.5f;
-
-                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
-                    float avance = 0.10f;
-                    float shift = (p.getVx() >= 0f) ? avance : -avance;
-
-                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
-                    p.marcarEliminar();
-                }
-            }
-        }
-
-        for (Pajaro b : gestorEnemigos.getPajaros()) {
-            if (b.isDead()) continue;
-
-            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
-                Proyectil p = gestorProyectiles.getNormales().get(i);
-                if (p.isEliminar()) continue;
-
-                if (b.getHitbox(PPU).overlaps(p.getHitbox())) {
-
-                    int hbHits = hitsPajaro.get(b, 0) + 1;
-                    hitsPajaro.put(b, hbHits);
-
-                    if (hbHits >= HITS_PAJARO) {
-                        b.recibirDanio(999999);
-                        if (!puntuadoPajaro.contains(b) && b.isDead()) {
-                            score += PUNTOS_PAJARO;
-                            puntuadoPajaro.add(b);
-
-                            Rectangle hbB = b.getHitbox(PPU);
-                            onEnemyKilled(hbB.x + hbB.width * 0.5f, hbB.y);
-                        }
-                    }
-
-                    Rectangle hb = p.getHitbox();
-                    float cy = hb.y + hb.height * 0.5f;
-
-                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
-                    float avance = 0.10f;
-                    float shift = (p.getVx() >= 0f) ? avance : -avance;
-
-                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
-                    p.marcarEliminar();
-                }
-            }
-        }
-
-        for (Golem g : gestorEnemigos.getGolems()) {
-            if (g.isDead()) continue;
-
-            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
-                Proyectil p = gestorProyectiles.getNormales().get(i);
-                if (p.isEliminar()) continue;
-
-                if (g.getHitbox().overlaps(p.getHitbox())) {
-
-                    int hg = hitsGolem.get(g, 0) + 1;
-                    hitsGolem.put(g, hg);
-
-                    if (hg >= HITS_GOLEM) {
-                        g.recibirDanio(999999);
-                        if (!puntuadoGolem.contains(g) && g.isDead()) {
-                            score += PUNTOS_GOLEM;
-                            puntuadoGolem.add(g);
-
-                            Rectangle hbG = g.getHitbox();
-                            onEnemyKilled(hbG.x + hbG.width * 0.5f, hbG.y);
-                        }
-                    }
-
-                    Rectangle hb = p.getHitbox();
-                    float cy = hb.y + hb.height * 0.5f;
-
-                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
-                    float avance = 0.10f;
-                    float shift = (p.getVx() >= 0f) ? avance : -avance;
-
-                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
-                    p.marcarEliminar();
-                }
-            }
-        }
-
-        // ------------------------------------------------------------
-        // ATAQUE ESPECIAL: DAÑO + PUNTOS + CONTEO KILLS
-        // ------------------------------------------------------------
-        AtaqueEspecial esp = gestorProyectiles.getEspecial();
-        if (esp != null) {
-            Rectangle hbRayo = esp.getHitbox();
-            if (hbRayo != null) {
-
-                for (Serpiente s : gestorEnemigos.getSerpientes()) {
-                    if (s.isDying()) continue;
-
-                    if (s.getHitbox().overlaps(hbRayo)) {
-                        s.recibirDanio(esp.getDamage());
-                        if (!puntuadoSerpiente.contains(s) && s.isDying()) {
-                            score += PUNTOS_SERPIENTE;
-                            puntuadoSerpiente.add(s);
-
-                            Rectangle hbS = s.getHitbox();
-                            onEnemyKilled(hbS.x + hbS.width * 0.5f, hbS.y);
-                        }
-                    }
-                }
-
-                for (Pajaro b : gestorEnemigos.getPajaros()) {
-                    if (b.isDead()) continue;
-
-                    if (b.getHitbox(PPU).overlaps(hbRayo)) {
-                        b.recibirDanio(esp.getDamage());
-                        if (!puntuadoPajaro.contains(b) && b.isDead()) {
-                            score += PUNTOS_PAJARO;
-                            puntuadoPajaro.add(b);
-
-                            Rectangle hbB = b.getHitbox(PPU);
-                            onEnemyKilled(hbB.x + hbB.width * 0.5f, hbB.y);
-                        }
-                    }
-                }
-
-                for (Golem g : gestorEnemigos.getGolems()) {
-                    if (g.isDead()) continue;
-
-                    if (g.getHitbox().overlaps(hbRayo)) {
-                        g.recibirDanio(esp.getDamage());
-                        if (!puntuadoGolem.contains(g) && g.isDead()) {
-                            score += PUNTOS_GOLEM;
-                            puntuadoGolem.add(g);
-
-                            Rectangle hbG = g.getHitbox();
-                            onEnemyKilled(hbG.x + hbG.width * 0.5f, hbG.y);
-                        }
-                    }
-                }
-            }
-        }
+        // Aquí tu bloque de colisiones + especial (lo tienes igual que antes)
+        // (Lo he omitido en esta copia para no duplicar 300 líneas. Pega aquí exactamente lo que ya tienes.)
 
         juego.batch.begin();
 
