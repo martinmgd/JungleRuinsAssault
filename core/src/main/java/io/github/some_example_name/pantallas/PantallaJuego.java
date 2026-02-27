@@ -3,6 +3,7 @@ package io.github.some_example_name.pantallas;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
@@ -36,6 +37,11 @@ import io.github.some_example_name.utilidades.ParallaxBackground;
 import io.github.some_example_name.utilidades.VenenoAssets;
 
 public class PantallaJuego extends ScreenAdapter {
+
+    // ------------------------------------------------------------
+    // MÚSICA
+    // ------------------------------------------------------------
+    private Music musicaNivel;
 
     private boolean inicializado = false;
     private final Main juego;
@@ -130,12 +136,14 @@ public class PantallaJuego extends ScreenAdapter {
     private static final int PUNTOS_SERPIENTE = 100;
     private static final int PUNTOS_GOLEM = 200;
 
+    // Bonus por tiempo
     private static final float TIEMPO_OBJETIVO_SEG = 90f;
     private static final int BONUS_MAX_TIEMPO = 1000;
 
     private boolean bonusTiempoAplicado = false;
     private int bonusTiempo = 0;
 
+    // Hits para matar
     private static final int HITS_PAJARO = 1;
     private static final int HITS_SERPIENTE = 3;
     private static final int HITS_GOLEM = 5;
@@ -254,7 +262,7 @@ public class PantallaJuego extends ScreenAdapter {
 
         temploX = anchoNivel - temploW * (1f - TEMPLO_OUT_RIGHT_FRAC);
 
-        // Anclado al suelo del nivel (ya no queda “alto”)
+        // ✅ VALOR “BUENO” (el que ya tenías bien): anclado al suelo, NO alto
         temploY = getSueloY() - 1.11f;
 
         puertaX0 = temploX + temploW * 0.47f;
@@ -263,9 +271,10 @@ public class PantallaJuego extends ScreenAdapter {
         limiteEnemigosDerecha = temploX;
         gestorEnemigos.setLimiteDerecha(limiteEnemigosDerecha);
 
+        // Fade al borde derecho real
         float playerW = jugador.getWidth(PPU);
         fadeEndX = anchoNivel - playerW;           // margen derecho real
-        fadeStartX = fadeEndX - playerW * 1.2f;    // empieza a desaparecer antes
+        fadeStartX = fadeEndX - playerW * 1.2f;    // empieza antes
         if (fadeStartX < 0f) fadeStartX = 0f;
     }
 
@@ -337,6 +346,12 @@ public class PantallaJuego extends ScreenAdapter {
 
             Rectangle hbD = d.getHitbox(hbDropTmp);
             if (hbD.overlaps(hbJugadorTmp)) {
+
+                // VIBRACIÓN CORTA AL RECOGER DROP
+                if (Gdx.input.isPeripheralAvailable(com.badlogic.gdx.Input.Peripheral.Vibrator)) {
+                    Gdx.input.vibrate(30);
+                }
+
                 d.eliminar = true;
                 curarJugador(VIDA_POR_CORAZON);
                 heartDrops.removeIndex(i);
@@ -355,8 +370,26 @@ public class PantallaJuego extends ScreenAdapter {
         }
     }
 
+    private void pararMusicaNivel() {
+        if (musicaNivel != null) {
+            musicaNivel.stop();
+            musicaNivel.dispose();
+            musicaNivel = null;
+        }
+    }
+
     @Override
     public void show() {
+
+        // Música (no duplica si vuelves desde pausa)
+        if (musicaNivel == null) {
+            musicaNivel = Gdx.audio.newMusic(Gdx.files.internal("audio/nivel1.mp3"));
+            musicaNivel.setLooping(true);
+            musicaNivel.setVolume(0.3f);
+            musicaNivel.play();
+        } else if (!musicaNivel.isPlaying()) {
+            musicaNivel.play();
+        }
 
         if (inicializado) return;
         inicializado = true;
@@ -439,7 +472,6 @@ public class PantallaJuego extends ScreenAdapter {
         gestorEnemigos.setStats(2.0f, 10);
 
         Configuracion.Dificultad d = Configuracion.getDificultad();
-
         if (d == Configuracion.Dificultad.FACIL) {
             gestorEnemigos.setSpawnConfig(3.5f, 3, 2f, anchoNivel - 2f, 3.5f);
         } else {
@@ -530,13 +562,19 @@ public class PantallaJuego extends ScreenAdapter {
 
         // TECLA 2: teleporta justo antes del trigger (para probar fade + transición)
         if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
-            // si aún no está calculado por cualquier motivo, recalculamos
             if (fadeEndX <= 0f) configurarTemplo();
 
             float playerW = jugador.getWidth(PPU);
-            float x = fadeEndX - playerW * 0.9f; // dentro de la zona de fade, pero no en el borde
+            float x = fadeEndX - playerW * 0.9f; // dentro de zona de fade, no en el borde
             if (x < 0f) x = 0f;
             jugador.setX(x);
+        }
+
+        // MUERTE -> PantallaMuerte (y parar música)
+        if (jugador != null && (jugador.isDead() || jugador.getVida() <= 0)) {
+            pararMusicaNivel();
+            juego.setScreen(new PantallaMuerte(juego));
+            return;
         }
 
         if (!enPausa && !nivelTerminado) {
@@ -569,6 +607,9 @@ public class PantallaJuego extends ScreenAdapter {
         if (!nivelTerminado && alphaJugador <= 0.01f && jugador.getX() >= fadeEndX - 0.001f) {
             nivelTerminado = true;
             aplicarBonusTiempoSiProcede();
+
+            pararMusicaNivel();
+
             juego.setScreen(new PantallaSalaJefe(juego, jugador));
             return;
         }
@@ -630,9 +671,181 @@ public class PantallaJuego extends ScreenAdapter {
 
         updateHeartDrops(delta);
 
-        // Aquí tu bloque de colisiones + especial (lo tienes igual que antes)
-        // (Lo he omitido en esta copia para no duplicar 300 líneas. Pega aquí exactamente lo que ya tienes.)
+        // ------------------------------------------------------------
+        // COLISIONES DISPAROS NORMALES + SCORE + CHISPITA
+        // ------------------------------------------------------------
 
+        // SERPIENTE
+        for (Serpiente s : gestorEnemigos.getSerpientes()) {
+            if (s.isDead()) continue;
+            if (s.isDying()) continue;
+
+            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
+                Proyectil p = gestorProyectiles.getNormales().get(i);
+                if (p.isEliminar()) continue;
+
+                if (s.getHitbox().overlaps(p.getHitbox())) {
+
+                    int hs = hitsSerpiente.get(s, 0) + 1;
+                    hitsSerpiente.put(s, hs);
+
+                    if (hs >= HITS_SERPIENTE) {
+                        if (!puntuadoSerpiente.contains(s)) {
+                            score += PUNTOS_SERPIENTE;
+                            puntuadoSerpiente.add(s);
+
+                            Rectangle hbS = s.getHitbox();
+                            onEnemyKilled(hbS.x + hbS.width * 0.5f, hbS.y);
+                        }
+                        s.recibirDanio(999999);
+                    }
+
+                    Rectangle hb = p.getHitbox();
+                    float cy = hb.y + hb.height * 0.5f;
+
+                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
+                    float avance = 0.10f;
+                    float shift = (p.getVx() >= 0f) ? avance : -avance;
+
+                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
+                    p.marcarEliminar();
+                }
+            }
+        }
+
+        // PÁJARO
+        for (Pajaro b : gestorEnemigos.getPajaros()) {
+            if (b.isDead()) continue;
+
+            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
+                Proyectil p = gestorProyectiles.getNormales().get(i);
+                if (p.isEliminar()) continue;
+
+                if (b.getHitbox(PPU).overlaps(p.getHitbox())) {
+
+                    int hbHits = hitsPajaro.get(b, 0) + 1;
+                    hitsPajaro.put(b, hbHits);
+
+                    if (hbHits >= HITS_PAJARO) {
+                        b.recibirDanio(999999);
+                        if (!puntuadoPajaro.contains(b) && b.isDead()) {
+                            score += PUNTOS_PAJARO;
+                            puntuadoPajaro.add(b);
+
+                            Rectangle hbB = b.getHitbox(PPU);
+                            onEnemyKilled(hbB.x + hbB.width * 0.5f, hbB.y);
+                        }
+                    }
+
+                    Rectangle hb = p.getHitbox();
+                    float cy = hb.y + hb.height * 0.5f;
+
+                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
+                    float avance = 0.10f;
+                    float shift = (p.getVx() >= 0f) ? avance : -avance;
+
+                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
+                    p.marcarEliminar();
+                }
+            }
+        }
+
+        // GOLEM
+        for (Golem g : gestorEnemigos.getGolems()) {
+            if (g.isDead()) continue;
+
+            for (int i = gestorProyectiles.getNormales().size - 1; i >= 0; i--) {
+                Proyectil p = gestorProyectiles.getNormales().get(i);
+                if (p.isEliminar()) continue;
+
+                if (g.getHitbox().overlaps(p.getHitbox())) {
+
+                    int hg = hitsGolem.get(g, 0) + 1;
+                    hitsGolem.put(g, hg);
+
+                    if (hg >= HITS_GOLEM) {
+                        g.recibirDanio(999999);
+                        if (!puntuadoGolem.contains(g) && g.isDead()) {
+                            score += PUNTOS_GOLEM;
+                            puntuadoGolem.add(g);
+
+                            Rectangle hbG = g.getHitbox();
+                            onEnemyKilled(hbG.x + hbG.width * 0.5f, hbG.y);
+                        }
+                    }
+
+                    Rectangle hb = p.getHitbox();
+                    float cy = hb.y + hb.height * 0.5f;
+
+                    float frenteX = (p.getVx() >= 0f) ? (hb.x + hb.width) : hb.x;
+                    float avance = 0.10f;
+                    float shift = (p.getVx() >= 0f) ? avance : -avance;
+
+                    gestorEfectos.spawnImpacto(frenteX + shift, cy, colorImpactoNormal);
+                    p.marcarEliminar();
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // ATAQUE ESPECIAL: DAÑO + PUNTOS + KILLS
+        // ------------------------------------------------------------
+        AtaqueEspecial esp = gestorProyectiles.getEspecial();
+        if (esp != null) {
+            Rectangle hbRayo = esp.getHitbox();
+            if (hbRayo != null) {
+
+                for (Serpiente s : gestorEnemigos.getSerpientes()) {
+                    if (s.isDead()) continue;
+                    if (s.isDying()) continue;
+
+                    if (s.getHitbox().overlaps(hbRayo)) {
+                        s.recibirDanio(esp.getDamage());
+                        if (!puntuadoSerpiente.contains(s) && s.isDying()) {
+                            score += PUNTOS_SERPIENTE;
+                            puntuadoSerpiente.add(s);
+
+                            Rectangle hbS = s.getHitbox();
+                            onEnemyKilled(hbS.x + hbS.width * 0.5f, hbS.y);
+                        }
+                    }
+                }
+
+                for (Pajaro b : gestorEnemigos.getPajaros()) {
+                    if (b.isDead()) continue;
+
+                    if (b.getHitbox(PPU).overlaps(hbRayo)) {
+                        b.recibirDanio(esp.getDamage());
+                        if (!puntuadoPajaro.contains(b) && b.isDead()) {
+                            score += PUNTOS_PAJARO;
+                            puntuadoPajaro.add(b);
+
+                            Rectangle hbB = b.getHitbox(PPU);
+                            onEnemyKilled(hbB.x + hbB.width * 0.5f, hbB.y);
+                        }
+                    }
+                }
+
+                for (Golem g : gestorEnemigos.getGolems()) {
+                    if (g.isDead()) continue;
+
+                    if (g.getHitbox().overlaps(hbRayo)) {
+                        g.recibirDanio(esp.getDamage());
+                        if (!puntuadoGolem.contains(g) && g.isDead()) {
+                            score += PUNTOS_GOLEM;
+                            puntuadoGolem.add(g);
+
+                            Rectangle hbG = g.getHitbox();
+                            onEnemyKilled(hbG.x + hbG.width * 0.5f, hbG.y);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // DIBUJO
+        // ------------------------------------------------------------
         juego.batch.begin();
 
         parallax.render(juego.batch, cameraLeftX, viewW);
@@ -669,6 +882,12 @@ public class PantallaJuego extends ScreenAdapter {
     }
 
     @Override
+    public void hide() {
+        // al salir de la pantalla, cortar música del nivel
+        pararMusicaNivel();
+    }
+
+    @Override
     public void dispose() {
         if (anims != null) anims.dispose();
         if (parallax != null) parallax.dispose();
@@ -693,5 +912,7 @@ public class PantallaJuego extends ScreenAdapter {
         if (temploTex != null) temploTex.dispose();
 
         if (hud != null) hud.dispose();
+
+        pararMusicaNivel();
     }
 }

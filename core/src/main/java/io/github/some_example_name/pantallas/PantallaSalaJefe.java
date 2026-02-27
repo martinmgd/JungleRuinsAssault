@@ -3,6 +3,7 @@ package io.github.some_example_name.pantallas;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
@@ -31,6 +32,11 @@ public class PantallaSalaJefe implements Screen {
     // BAJAMOS el boss para que no quede a la altura de la cabeza
     private static final float BOSS_Y_OFFSET = -1.70f;
 
+    // ✅ NUEVO: retraso para ver animación de muerte antes de cambiar de pantalla
+    private boolean muerteIniciada = false;
+    private float timerMuerte = 0f;
+    private static final float RETARDO_MUERTE = 1.20f;
+
     private final Main game;
     private final Jugador jugador;
 
@@ -54,6 +60,9 @@ public class PantallaSalaJefe implements Screen {
     private DisparoAssets disparoAssets;
     private GestorProyectiles gestorProyectiles;
 
+    // Música nivel 2
+    private Music musicaJefe;
+
     public PantallaSalaJefe(Main game, Jugador jugador) {
         this.game = game;
         this.jugador = jugador;
@@ -63,6 +72,30 @@ public class PantallaSalaJefe implements Screen {
         return jugador;
     }
 
+    // ------------------------------------------------------------
+    // Métodos para que PantallaPausaJefe pueda controlar la música
+    // ------------------------------------------------------------
+    public void pauseMusica() {
+        if (musicaJefe != null && musicaJefe.isPlaying()) {
+            musicaJefe.pause();
+        }
+    }
+
+    public void resumeMusica() {
+        if (musicaJefe != null && !musicaJefe.isPlaying()) {
+            musicaJefe.play();
+        }
+    }
+
+    public void stopMusica() {
+        if (musicaJefe != null) {
+            musicaJefe.stop();
+            musicaJefe.dispose();
+            musicaJefe = null;
+        }
+    }
+    // ------------------------------------------------------------
+
     private void setPixelArt(Texture t) {
         t.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         t.setWrap(TextureWrap.ClampToEdge, TextureWrap.ClampToEdge);
@@ -70,6 +103,20 @@ public class PantallaSalaJefe implements Screen {
 
     @Override
     public void show() {
+
+        // Iniciar música del jefe
+        if (musicaJefe == null) {
+            musicaJefe = Gdx.audio.newMusic(Gdx.files.internal("audio/nivel2.mp3"));
+            musicaJefe.setLooping(true);
+            musicaJefe.setVolume(0.7f);
+            musicaJefe.play();
+        } else if (!musicaJefe.isPlaying()) {
+            musicaJefe.play();
+        }
+
+        // ✅ Reset muerte
+        muerteIniciada = false;
+        timerMuerte = 0f;
 
         camara = new OrthographicCamera();
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
@@ -135,18 +182,58 @@ public class PantallaSalaJefe implements Screen {
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) ||
             Gdx.input.isKeyJustPressed(Input.Keys.P)) {
+
+            // Al entrar en pausa: pausar música (no stop)
+            pauseMusica();
+
             game.setScreen(new PantallaPausaJefe(game, this));
+            return;
+        }
+
+        // ✅ Si está muerto, no seguimos update de gameplay: esperamos y saltamos
+        if (jugador.isDead() || jugador.getVida() <= 0) {
+
+            if (!muerteIniciada) {
+                muerteIniciada = true;
+                timerMuerte = 0f;
+            }
+
+            // Aun así dejamos que el jugador avance animación (aplicarEntrada ya la avanza con stateTime)
+            jugador.aplicarEntrada(0f, false, false, dt);
+
+            timerMuerte += dt;
+            if (timerMuerte >= RETARDO_MUERTE) {
+                game.setScreen(new PantallaMuerte(game));
+            }
+
+            // Dibujamos la escena para ver la animación
+            Gdx.gl.glClearColor(0f, 0f, 0f, 1f);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+            viewport.apply();
+            game.batch.setProjectionMatrix(camara.combined);
+
+            game.batch.begin();
+            game.batch.draw(fondoSala, 0f, 0f, viewport.getWorldWidth(), viewport.getWorldHeight());
+            if (jefe != null) jefe.draw(game.batch);
+            for (ProyectilMeteoro m : meteoros) m.draw(game.batch);
+            gestorProyectiles.draw(game.batch, 0f, viewport.getWorldWidth());
+            jugador.draw(game.batch, PPU_PLAYER);
+            game.batch.end();
+
+            game.batch.begin();
+            hud.setVida(jugador.getVida());
+            hud.setScore(score);
+            hud.setTiempoSeg(tiempo);
+            hud.draw(game.batch);
+            game.batch.end();
+
             return;
         }
 
         tiempo += dt;
 
         update(dt);
-
-        if (jugador.getVida() <= 0) {
-            game.setScreen(new PantallaMuerte(game));
-            return;
-        }
 
         Gdx.gl.glClearColor(0f, 0f, 0f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
@@ -261,11 +348,21 @@ public class PantallaSalaJefe implements Screen {
     }
 
     @Override public void pause() {}
-    @Override public void resume() {}
-    @Override public void hide() {}
+
+    @Override public void resume() {
+        // Por seguridad, si vuelves al boss y no está sonando, reanuda
+        resumeMusica();
+    }
 
     @Override
-    public void dispose() {
+    public void hide() {
+        // Si sales del boss por cualquier vía (menú, muerte, victoria, etc)
+        stopMusica();
+    }
+
+    @Override public void dispose() {
+        stopMusica();
+
         if (fondoSala != null) fondoSala.dispose();
         if (bossDormidoTex != null) bossDormidoTex.dispose();
         if (bossDespiertoTex != null) bossDespiertoTex.dispose();

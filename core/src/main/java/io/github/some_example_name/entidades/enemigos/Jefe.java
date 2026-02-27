@@ -1,5 +1,7 @@
 package io.github.some_example_name.entidades.enemigos;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
@@ -46,6 +48,9 @@ public class Jefe {
     private float saltoT = 0f;
     private float saltoX0;
     private float saltoX1;
+
+    // ✅ NUEVO: para vibrar SOLO al aterrizar (una vez por salto)
+    private boolean vibradoEnEsteSalto = false;
 
     private boolean vivo = true;
     private int vida;
@@ -138,6 +143,9 @@ public class Jefe {
         estado = Estado.SALTANDO;
         saltoT = 0f;
 
+        // ✅ reset de vibración del salto
+        vibradoEnEsteSalto = false;
+
         saltoX0 = x;
 
         float bossCx = x + anchoW * 0.5f;
@@ -161,7 +169,16 @@ public class Jefe {
         y = baseY + (saltoAlturaW * arco);
 
         if (p >= 1f) {
+            // ✅ aterrizaje
             y = baseY;
+
+            // ✅ Vibración larga SOLO una vez al aterrizar
+            if (!vibradoEnEsteSalto
+                && Gdx.input.isPeripheralAvailable(Input.Peripheral.Vibrator)) {
+                Gdx.input.vibrate(180); // larga (150–200ms)
+                vibradoEnEsteSalto = true;
+            }
+
             estado = Estado.DESPIERTO;
         }
     }

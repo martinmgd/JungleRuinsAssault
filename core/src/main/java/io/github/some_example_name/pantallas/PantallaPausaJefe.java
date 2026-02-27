@@ -45,7 +45,7 @@ public class PantallaPausaJefe extends ScreenAdapter {
         camera.update();
 
         // Fuente externa generada con Hiero (.fnt + .png)
-        // Asegúrate de tener en assets/fonts/ el Jersey10.fnt y todos sus png
+        // Asegúrate de tener en assets/fonts/ el Jersey10-Regular.fnt y todos sus png
         fontTitle = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
         fontItem = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
 
@@ -59,7 +59,6 @@ public class PantallaPausaJefe extends ScreenAdapter {
         fontTitle.getData().setScale(factorEscaladoFuente * 2f);
         fontItem.getData().setScale(factorEscaladoFuente * 1.4f);
 
-        // Color (puedes cambiarlo si quieres)
         fontTitle.setColor(Color.WHITE);
         fontItem.setColor(Color.WHITE);
 
@@ -79,8 +78,11 @@ public class PantallaPausaJefe extends ScreenAdapter {
     @Override
     public void render(float delta) {
 
+        // ESC / P -> continuar (reanudar música del jefe)
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) ||
             Gdx.input.isKeyJustPressed(Input.Keys.P)) {
+
+            if (salaJefe != null) salaJefe.resumeMusica();
             juego.setScreen(salaJefe);
             return;
         }
@@ -97,10 +99,18 @@ public class PantallaPausaJefe extends ScreenAdapter {
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
             if (seleccionado == 0) {
+                // Continuar: reanudar música
+                if (salaJefe != null) salaJefe.resumeMusica();
                 juego.setScreen(salaJefe);
+
             } else if (seleccionado == 1) {
+                // Reiniciar: parar música actual del jefe y recrear sala
+                if (salaJefe != null) salaJefe.stopMusica();
                 juego.setScreen(new PantallaSalaJefe(juego, salaJefe.getJugador()));
+
             } else {
+                // Menú: parar música del jefe y volver al menú
+                if (salaJefe != null) salaJefe.stopMusica();
                 juego.setScreen(new PantallaMenu(juego));
             }
             return;

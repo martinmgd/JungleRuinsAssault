@@ -50,6 +50,9 @@ public class Hud implements Disposable {
     private static final float BONUS_SHOW_SECONDS = 2.2f;
     private static final float BONUS_FONT_SCALE = 1.60f;
 
+    // Cada corazón representa este "bloque" de vida:
+    private static final int VIDA_POR_CORAZON = 20;
+
     public Hud() {
         cam = new OrthographicCamera();
         viewport = new ScreenViewport(cam);
@@ -103,9 +106,11 @@ public class Hud implements Disposable {
         return Math.min(sx, sy);
     }
 
+    // ✅ FIX: corazones por "bloques" (20 vida = 1 corazón), NO por porcentaje con round()
     private int getCorazonesLlenos() {
-        float frac = vida / 100f;
-        int llenos = Math.round(frac * MAX_CORAZONES);
+        if (vida <= 0) return 0;
+
+        int llenos = (vida + VIDA_POR_CORAZON - 1) / VIDA_POR_CORAZON; // ceil(vida/20)
         if (llenos < 0) llenos = 0;
         if (llenos > MAX_CORAZONES) llenos = MAX_CORAZONES;
         return llenos;

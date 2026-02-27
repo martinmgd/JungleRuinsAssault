@@ -1,5 +1,7 @@
 package io.github.some_example_name.entidades.proyectiles.jugador;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.Array;
 
@@ -11,6 +13,13 @@ public class GestorProyectiles {
     private AtaqueEspecial especial = null;
 
     private final DisparoAssets assets;
+
+    private Sound sonidoNormal;
+    private Sound sonidoEspecial;
+
+    // Volúmenes (ajusta aquí)
+    private float volNormal = 0.20f;
+    private float volEspecial = 0.20f;
 
     private float velNormal = 18f;
     private int dmgNormal = 10;
@@ -24,6 +33,10 @@ public class GestorProyectiles {
 
     public GestorProyectiles(DisparoAssets assets) {
         this.assets = assets;
+
+        // Carga de sonidos (assets/audio/)
+        sonidoNormal = Gdx.audio.newSound(Gdx.files.internal("audio/ataque_normal.mp3"));
+        sonidoEspecial = Gdx.audio.newSound(Gdx.files.internal("audio/ataque_especial.mp3"));
     }
 
     public void update(float delta, float camLeftX, float viewW) {
@@ -68,6 +81,8 @@ public class GestorProyectiles {
             normalW, normalH,
             dmgNormal
         ));
+
+        if (sonidoNormal != null) sonidoNormal.play(volNormal);
     }
 
     public void startEspecial(float x, float y, boolean derecha, float viewH) {
@@ -83,6 +98,8 @@ public class GestorProyectiles {
         );
 
         especial.setDamage(50);
+
+        if (sonidoEspecial != null) sonidoEspecial.play(volEspecial);
     }
 
     public boolean isEspecialActivo() {
@@ -95,5 +112,25 @@ public class GestorProyectiles {
 
     public AtaqueEspecial getEspecial() {
         return especial;
+    }
+
+    // (Opcional) cambiar volúmenes en runtime
+    public void setVolumenNormal(float v) {
+        volNormal = Math.max(0f, Math.min(1f, v));
+    }
+
+    public void setVolumenEspecial(float v) {
+        volEspecial = Math.max(0f, Math.min(1f, v));
+    }
+
+    public void dispose() {
+        if (sonidoNormal != null) {
+            sonidoNormal.dispose();
+            sonidoNormal = null;
+        }
+        if (sonidoEspecial != null) {
+            sonidoEspecial.dispose();
+            sonidoEspecial = null;
+        }
     }
 }

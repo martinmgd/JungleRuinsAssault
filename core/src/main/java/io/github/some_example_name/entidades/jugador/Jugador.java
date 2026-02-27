@@ -1,5 +1,6 @@
 package io.github.some_example_name.entidades.jugador;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -244,6 +245,11 @@ public class Jugador {
     }
 
     public void recibirDanio(int dmg) {
+        if (dmg > 0) {
+            if (Gdx.input.isPeripheralAvailable(com.badlogic.gdx.Input.Peripheral.Vibrator)) {
+                Gdx.input.vibrate(40); // corta
+            }
+        }
         if (estado == Estado.DEAD) return;
         if (invulnTimer > 0f) return;
 
