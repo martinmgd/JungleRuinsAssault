@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.Array;
 
 import io.github.some_example_name.utilidades.DisparoAssets;
+import io.github.some_example_name.utilidades.Configuracion;
 
 public class GestorProyectiles {
 
@@ -82,7 +83,7 @@ public class GestorProyectiles {
             dmgNormal
         ));
 
-        if (sonidoNormal != null) sonidoNormal.play(volNormal);
+        if (sonidoNormal != null && Configuracion.isSonidoActivado()) sonidoNormal.play(volNormal);
     }
 
     public void startEspecial(float x, float y, boolean derecha, float viewH) {
@@ -99,7 +100,7 @@ public class GestorProyectiles {
 
         especial.setDamage(50);
 
-        if (sonidoEspecial != null) sonidoEspecial.play(volEspecial);
+        if (sonidoEspecial != null && Configuracion.isSonidoActivado()) sonidoEspecial.play(volEspecial);
     }
 
     public boolean isEspecialActivo() {

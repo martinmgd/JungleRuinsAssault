@@ -226,6 +226,10 @@ public class Jefe {
         }
     }
 
+    public boolean isSaltando() {
+        return estado == Estado.SALTANDO;
+    }
+
     public int getVida() { return vida; }
     public int getVidaMax() { return vidaMax; }
 

@@ -1,5 +1,6 @@
 package io.github.some_example_name.pantallas;
 
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
@@ -10,7 +11,6 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
-import com.badlogic.gdx.utils.ScreenUtils;
 
 import io.github.some_example_name.Main;
 import io.github.some_example_name.utilidades.Idiomas;
@@ -32,6 +32,11 @@ public class PantallaPausaJefe extends ScreenAdapter {
 
     private int seleccionado = 0;
 
+    // ------------------------------------------------------------
+    // CONTROLES: PC teclado / Móvil táctil automático
+    // ------------------------------------------------------------
+    private boolean esMovil = false;
+
     public PantallaPausaJefe(Main juego, PantallaSalaJefe salaJefe) {
         this.juego = juego;
         this.salaJefe = salaJefe;
@@ -40,29 +45,31 @@ public class PantallaPausaJefe extends ScreenAdapter {
     @Override
     public void show() {
 
+        esMovil = (Gdx.app.getType() == Application.ApplicationType.Android
+            || Gdx.app.getType() == Application.ApplicationType.iOS);
+
+        // Asegura bundle
+        Idiomas.get();
+
+        // ✅ Si vienes a pausa, pausa música (no stop)
+        if (salaJefe != null) salaJefe.pauseMusica();
+
         camera = new OrthographicCamera();
         camera.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         camera.update();
 
-        // Fuente externa generada con Hiero (.fnt + .png)
-        // Asegúrate de tener en assets/fonts/ el Jersey10-Regular.fnt y todos sus png
         fontTitle = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
         fontItem = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
 
-        // Densidad de la pantalla del dispositivo (apuntes)
         float dpiScale = Gdx.graphics.getDensity();
-
-        // Factor para trabajar con unidades del "mundo" y no con píxeles (adaptado a esta pantalla)
         factorEscaladoFuente = (camera.viewportHeight / Gdx.graphics.getHeight()) * dpiScale;
 
-        // Escalado (similar a apuntes)
         fontTitle.getData().setScale(factorEscaladoFuente * 2f);
         fontItem.getData().setScale(factorEscaladoFuente * 1.4f);
 
         fontTitle.setColor(Color.WHITE);
         fontItem.setColor(Color.WHITE);
 
-        // Filtro: Nearest para mantener estilo pixelado
         fontTitle.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
         fontItem.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
 
@@ -77,6 +84,63 @@ public class PantallaPausaJefe extends ScreenAdapter {
 
     @Override
     public void render(float delta) {
+
+        // Dibujar el boss congelado detrás (para que la transparencia sea real)
+        if (salaJefe != null) salaJefe.render(0);
+
+        // ------------------------------------------------------------
+        // MÓVIL: TÁCTIL (tocar una opción)
+        // ------------------------------------------------------------
+        if (esMovil && Gdx.input.justTouched()) {
+
+            float screenW = Gdx.graphics.getWidth();
+            float screenH = Gdx.graphics.getHeight();
+
+            float panelW = screenW * 0.245f;
+            float panelH = screenH * 0.5f;
+            float panelX = (screenW - panelW) * 0.5f;
+            float panelY = (screenH - panelH) * 0.5f;
+
+            // Coordenadas toque (pantalla), invertimos Y para compararlas con el layout
+            float wx = Gdx.input.getX();
+            float wy = screenH - Gdx.input.getY();
+
+            // Items centrados
+            float y0 = panelY + panelH * 0.55f;
+            float dy = panelH * 0.18f;
+
+            float yContinue = y0;
+            float yRestart = y0 - dy;
+            float yMenu = y0 - dy * 2f;
+
+            float halfH = dy * 0.55f;
+
+            boolean dentroPanelX = (wx >= panelX && wx <= panelX + panelW);
+
+            if (dentroPanelX) {
+                if (wy >= yContinue - halfH && wy <= yContinue + halfH) {
+                    seleccionado = 0;
+
+                    if (salaJefe != null) salaJefe.resumeMusica();
+                    juego.setScreen(salaJefe);
+                    return;
+
+                } else if (wy >= yRestart - halfH && wy <= yRestart + halfH) {
+                    seleccionado = 1;
+
+                    if (salaJefe != null) salaJefe.stopMusica();
+                    juego.setScreen(new PantallaSalaJefe(juego, salaJefe.getJugador()));
+                    return;
+
+                } else if (wy >= yMenu - halfH && wy <= yMenu + halfH) {
+                    seleccionado = 2;
+
+                    if (salaJefe != null) salaJefe.stopMusica();
+                    juego.setScreen(new PantallaMenu(juego));
+                    return;
+                }
+            }
+        }
 
         // ESC / P -> continuar (reanudar música del jefe)
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) ||
@@ -116,37 +180,44 @@ public class PantallaPausaJefe extends ScreenAdapter {
             return;
         }
 
-        ScreenUtils.clear(0f, 0f, 0f, 1f);
-
         juego.batch.setProjectionMatrix(camera.combined);
-        juego.batch.setColor(1f, 1f, 1f, 1f);
-
         juego.batch.begin();
 
         float screenW = Gdx.graphics.getWidth();
         float screenH = Gdx.graphics.getHeight();
 
-        float panelW = screenW * 0.6f;
-        float panelH = screenH * 0.6f;
-        float panelX = (screenW - panelW) / 2f;
-        float panelY = (screenH - panelH) / 2f;
+        // Igual que PantallaPausa: panel más estrecho y centrado
+        float panelW = screenW * 0.245f;
+        float panelH = screenH * 0.5f;
+        float panelX = (screenW - panelW) * 0.5f;
+        float panelY = (screenH - panelH) * 0.5f;
 
-        juego.batch.setColor(0f, 0f, 0f, 0.7f);
+        // Rectángulo semi-transparente
+        juego.batch.setColor(0f, 0f, 0f, 0.35f);
         juego.batch.draw(pixel, panelX, panelY, panelW, panelH);
+
+        // Borde sutil
+        juego.batch.setColor(1f, 1f, 1f, 0.10f);
+        float b = Math.max(2f, Math.min(panelW, panelH) * 0.01f);
+        juego.batch.draw(pixel, panelX, panelY, panelW, b);
+        juego.batch.draw(pixel, panelX, panelY + panelH - b, panelW, b);
+        juego.batch.draw(pixel, panelX, panelY, b, panelH);
+        juego.batch.draw(pixel, panelX + panelW - b, panelY, b, panelH);
 
         juego.batch.setColor(1f, 1f, 1f, 1f);
 
-        float centerX = screenW / 2f;
+        float centerX = screenW * 0.5f;
 
-        drawCentered(fontTitle, Idiomas.t("pause_title"), centerX, panelY + panelH * 0.85f);
+        // Título centrado
+        drawCentered(fontTitle, Idiomas.t("pause_title"), centerX, panelY + panelH * 0.82f);
 
-        float left = panelX + panelW * 0.2f;
-        float y0 = panelY + panelH * 0.6f;
-        float dy = panelH * 0.15f;
+        // Items centrados
+        float y0 = panelY + panelH * 0.55f;
+        float dy = panelH * 0.18f;
 
-        drawItem(Idiomas.t("pause_continue"), left, y0, seleccionado == 0);
-        drawItem(Idiomas.t("pause_restart"), left, y0 - dy, seleccionado == 1);
-        drawItem(Idiomas.t("pause_menu"), left, y0 - dy * 2f, seleccionado == 2);
+        drawCentered(fontItem, (seleccionado == 0 ? "> " : "") + Idiomas.t("pause_continue"), centerX, y0);
+        drawCentered(fontItem, (seleccionado == 1 ? "> " : "") + Idiomas.t("pause_restart"), centerX, y0 - dy);
+        drawCentered(fontItem, (seleccionado == 2 ? "> " : "") + Idiomas.t("pause_menu"), centerX, y0 - dy * 2f);
 
         juego.batch.end();
     }
@@ -157,11 +228,11 @@ public class PantallaPausaJefe extends ScreenAdapter {
         font.draw(juego.batch, layout, x, y);
     }
 
-    private void drawItem(String text, float x, float y, boolean selected) {
-        if (selected) {
-            fontItem.draw(juego.batch, "> " + text, x, y);
-        } else {
-            fontItem.draw(juego.batch, text, x, y);
+    @Override
+    public void resize(int width, int height) {
+        if (camera != null) {
+            camera.setToOrtho(false, width, height);
+            camera.update();
         }
     }
 

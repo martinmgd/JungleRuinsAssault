@@ -6,6 +6,8 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 
+import io.github.some_example_name.utilidades.Configuracion;
+
 public class Jugador {
 
     private boolean mirandoDerecha = true;
@@ -246,7 +248,8 @@ public class Jugador {
 
     public void recibirDanio(int dmg) {
         if (dmg > 0) {
-            if (Gdx.input.isPeripheralAvailable(com.badlogic.gdx.Input.Peripheral.Vibrator)) {
+            if (Configuracion.isVibracionActivada() &&
+                Gdx.input.isPeripheralAvailable(com.badlogic.gdx.Input.Peripheral.Vibrator)) {
                 Gdx.input.vibrate(40); // corta
             }
         }

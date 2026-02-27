@@ -1,13 +1,15 @@
 package io.github.some_example_name.pantallas;
 
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
@@ -23,7 +25,7 @@ public class PantallaMenu extends ScreenAdapter {
     private OrthographicCamera camara;
     private Viewport viewport;
 
-    private BitmapFont font;
+    private com.badlogic.gdx.graphics.g2d.BitmapFont font;
 
     private float factorEscaladoFuente;
 
@@ -31,6 +33,16 @@ public class PantallaMenu extends ScreenAdapter {
 
     // 0: Jugar, 1: Opciones, 2: Salir
     private static final int ITEM_COUNT = 3;
+
+    // --- NUEVO: fondo + pixel 1x1 para panel (como Pausa/Muerte) ---
+    private Texture fondoMenu;
+    private Texture pixel;
+    // ---------------------------------------------------------------
+
+    // ------------------------------------------------------------
+    // CONTROLES: PC teclado / Móvil táctil automático (menú solo táctil en móvil)
+    // ------------------------------------------------------------
+    private boolean esMovil = false;
 
     public PantallaMenu(Main juego) {
         this.juego = juego;
@@ -42,9 +54,12 @@ public class PantallaMenu extends ScreenAdapter {
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
+        esMovil = (Gdx.app.getType() == Application.ApplicationType.Android
+            || Gdx.app.getType() == Application.ApplicationType.iOS);
+
         // Fuente externa generada con Hiero (.fnt + .png)
         // Asegúrate de tener en assets/fonts/ el Jersey10.fnt y todos sus png
-        font = new BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
+        font = new com.badlogic.gdx.graphics.g2d.BitmapFont(Gdx.files.internal("fonts/Jersey10-Regular.fnt"));
 
         font.setUseIntegerPositions(false);
 
@@ -56,6 +71,19 @@ public class PantallaMenu extends ScreenAdapter {
 
         // Filtro: Nearest para estilo pixelado
         font.getRegion().getTexture().setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
+
+        // --- NUEVO: cargar fondo del menú (tu imagen) ---
+        // Está en assets/sprites/fondos/fondoMenu.png
+        fondoMenu = new Texture(Gdx.files.internal("sprites/fondos/fondoMenu.png"));
+        fondoMenu.setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
+
+        // --- NUEVO: pixel 1x1 para dibujar rectángulo con alpha ---
+        Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        pm.setColor(1, 1, 1, 1);
+        pm.fill();
+        pixel = new Texture(pm);
+        pm.dispose();
+        // ------------------------------------------------
 
         // Asegura que el bundle está cargado (por si llegas aquí desde otra pantalla)
         Idiomas.get();
@@ -72,34 +100,113 @@ public class PantallaMenu extends ScreenAdapter {
 
         juego.batch.begin();
 
-        // Título
-        String titulo = safeT("menu_title", "Jungle Ruins Assault");
-        drawCentered(titulo, viewport.getWorldHeight() * 0.78f);
+        // Fondo del menú
+        if (fondoMenu != null) {
+            juego.batch.setColor(1f, 1f, 1f, 1f);
+            juego.batch.draw(fondoMenu, 0f, 0f, viewport.getWorldWidth(), viewport.getWorldHeight());
+        }
 
-        // Items
-        float baseY = viewport.getWorldHeight() * 0.52f;
-        float step = viewport.getWorldHeight() * 0.10f;
+        // Panel central semi-transparente (como Pausa/Muerte)
+        float panelW = viewport.getWorldWidth() * 0.55f;
+        float panelH = viewport.getWorldHeight() * 0.55f;
+        float panelX = (viewport.getWorldWidth() - panelW) * 0.5f;
+        float panelY = (viewport.getWorldHeight() - panelH) * 0.35f;
 
-        drawItem(0, safeT("menu_play", "Jugar"), baseY - step * 0);
-        drawItem(1, safeT("menu_options", "Opciones"), baseY - step * 1);
-        drawItem(2, safeT("menu_exit", "Salir"), baseY - step * 2);
+        // Rectángulo semi-transparente
+        juego.batch.setColor(0f, 0f, 0f, 0.35f);
+        juego.batch.draw(pixel, panelX, panelY, panelW, panelH);
 
-        // Hint
+        // Borde sutil
+        juego.batch.setColor(1f, 1f, 1f, 0.10f);
+        float b = Math.max(0.02f, Math.min(panelW, panelH) * 0.01f);
+        juego.batch.draw(pixel, panelX, panelY, panelW, b);
+        juego.batch.draw(pixel, panelX, panelY + panelH - b, panelW, b);
+        juego.batch.draw(pixel, panelX, panelY, b, panelH);
+        juego.batch.draw(pixel, panelX + panelW - b, panelY, b, panelH);
+
+        juego.batch.setColor(1f, 1f, 1f, 1f);
+
+        // Items: centrados dentro del panel (grupo centrado)
+        float lineStep = font.getLineHeight() * 1.25f;
+
+        float centerY = panelY + panelH * 0.55f;
+        float baseY = centerY + lineStep;
+
+        drawItem(0, safeT("menu_play", "Jugar"), baseY - lineStep * 0f);
+        drawItem(1, safeT("menu_options", "Opciones"), baseY - lineStep * 1f);
+        drawItem(2, safeT("menu_exit", "Salir"), baseY - lineStep * 2f);
+
         String hint = safeT("menu_hint", "↑↓ para elegir, ENTER para aceptar");
 
         float originalScaleX = font.getData().scaleX;
         float originalScaleY = font.getData().scaleY;
 
         font.getData().setScale(originalScaleX * 0.85f, originalScaleY * 0.85f);
-        drawCentered(hint, viewport.getWorldHeight() * 0.15f);
 
-        // volver al scale original
+        if (esMovil) {
+            drawCentered(safeT("menu_hint_touch", "Toca una opción para continuar"), viewport.getWorldHeight() * 0.08f);
+        } else {
+            drawCentered(hint, viewport.getWorldHeight() * 0.08f);
+        }
+
         font.getData().setScale(originalScaleX, originalScaleY);
 
         juego.batch.end();
     }
 
     private void handleInput() {
+
+        // ------------------------------------------------------------
+        // MÓVIL: SOLO TÁCTIL
+        // ------------------------------------------------------------
+        if (esMovil) {
+
+            if (Gdx.input.justTouched()) {
+
+                // ✅ NO invertir Y antes de unproject
+                int sx = Gdx.input.getX();
+                int sy = Gdx.input.getY();
+
+                Vector2 tmp = new Vector2(sx, sy);
+                viewport.unproject(tmp);
+
+                float wx = tmp.x;
+                float wy = tmp.y;
+
+                float lineStep = font.getLineHeight() * 1.25f;
+
+                float panelW = viewport.getWorldWidth() * 0.55f;
+                float panelH = viewport.getWorldHeight() * 0.55f;
+                float panelX = (viewport.getWorldWidth() - panelW) * 0.5f;
+                float panelY = (viewport.getWorldHeight() - panelH) * 0.35f;
+
+                float centerY = panelY + panelH * 0.55f;
+                float baseY = centerY + lineStep;
+
+                float y0 = baseY - lineStep * 0f;
+                float y1 = baseY - lineStep * 1f;
+                float y2 = baseY - lineStep * 2f;
+
+                float halfH = lineStep * 0.55f;
+
+                if (wy >= y0 - halfH && wy <= y0 + halfH && wx >= panelX && wx <= panelX + panelW) {
+                    selected = 0;
+                    activateSelected();
+                } else if (wy >= y1 - halfH && wy <= y1 + halfH && wx >= panelX && wx <= panelX + panelW) {
+                    selected = 1;
+                    activateSelected();
+                } else if (wy >= y2 - halfH && wy <= y2 + halfH && wx >= panelX && wx <= panelX + panelW) {
+                    selected = 2;
+                    activateSelected();
+                }
+            }
+
+            return;
+        }
+
+        // ------------------------------------------------------------
+        // PC: TECLADO como hasta ahora
+        // ------------------------------------------------------------
         if (Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
             selected = (selected - 1 + ITEM_COUNT) % ITEM_COUNT;
         }
@@ -109,7 +216,6 @@ public class PantallaMenu extends ScreenAdapter {
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             activateSelected();
         }
-        // Escape para salir (en desktop)
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             if (Gdx.app != null) Gdx.app.exit();
         }
@@ -144,7 +250,8 @@ public class PantallaMenu extends ScreenAdapter {
     }
 
     private void drawCentered(String text, float y) {
-        com.badlogic.gdx.graphics.g2d.GlyphLayout layout = new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, text);
+        com.badlogic.gdx.graphics.g2d.GlyphLayout layout =
+            new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, text);
         float x = (viewport.getWorldWidth() - layout.width) * 0.5f;
         font.draw(juego.batch, layout, x, y);
     }
@@ -165,5 +272,7 @@ public class PantallaMenu extends ScreenAdapter {
     @Override
     public void dispose() {
         if (font != null) font.dispose();
+        if (fondoMenu != null) fondoMenu.dispose();
+        if (pixel != null) pixel.dispose();
     }
 }

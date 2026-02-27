@@ -17,6 +17,9 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
+// ✅ NUEVO (solo para controles táctiles visibles)
+import com.badlogic.gdx.utils.viewport.ScreenViewport;
+
 import io.github.some_example_name.Main;
 import io.github.some_example_name.entidades.efectos.GestorEfectos;
 import io.github.some_example_name.entidades.enemigos.GestorEnemigos;
@@ -36,6 +39,9 @@ import io.github.some_example_name.utilidades.ImpactoAssets;
 import io.github.some_example_name.utilidades.ParallaxBackground;
 import io.github.some_example_name.utilidades.VenenoAssets;
 
+// ✅ Controles táctiles (ruta según tu proyecto)
+import io.github.some_example_name.entidades.entidades.controles.ControlesTactiles;
+
 public class PantallaJuego extends ScreenAdapter {
 
     // ------------------------------------------------------------
@@ -48,6 +54,12 @@ public class PantallaJuego extends ScreenAdapter {
 
     private OrthographicCamera camara;
     private Viewport viewport;
+
+    private boolean muerteEnCurso = false;
+    private float tiempoMuerte = 0f;
+
+    // Ajusta esto al tiempo real de tu animación dead (ej: 1.0s, 1.2s, etc.)
+    private static final float DURACION_ANIM_DEAD = 1.2f;
 
     private PlayerAnimations anims;
     private Jugador jugador;
@@ -165,6 +177,22 @@ public class PantallaJuego extends ScreenAdapter {
     private TextureRegion heartDropRegion;
     private final Array<HeartDrop> heartDrops = new Array<>();
     private final Rectangle hbJugadorTmp = new Rectangle();
+
+    // ------------------------------------------------------------
+    // ✅ CONTROLES TÁCTILES (SOLO MÓVIL)
+    // ------------------------------------------------------------
+    private boolean esMovil = false;
+    private ControlesTactiles controles;
+
+    // ✅ NUEVO: viewport de controles en coordenadas de pantalla (para que se vean siempre)
+    private Viewport controlesViewport;
+    private OrthographicCamera controlesCam;
+
+    // Para detectar "justPressed" en botones táctiles
+    private boolean prevSaltarTouch = false;
+    private boolean prevDispararTouch = false;
+    private boolean prevEspecialTouch = false;
+    private boolean prevPausaTouch = false;
 
     private static class HeartDrop {
         float x, y;
@@ -348,7 +376,8 @@ public class PantallaJuego extends ScreenAdapter {
             if (hbD.overlaps(hbJugadorTmp)) {
 
                 // VIBRACIÓN CORTA AL RECOGER DROP
-                if (Gdx.input.isPeripheralAvailable(com.badlogic.gdx.Input.Peripheral.Vibrator)) {
+                if (Configuracion.isVibracionActivada() &&
+                    Gdx.input.isPeripheralAvailable(com.badlogic.gdx.Input.Peripheral.Vibrator)) {
                     Gdx.input.vibrate(30);
                 }
 
@@ -378,10 +407,26 @@ public class PantallaJuego extends ScreenAdapter {
         }
     }
 
-    @Override
-    public void show() {
+    // ------------------------------------------------------------
+    // ✅ CONTROL AUDIO (SONIDO ON/OFF)
+    // ------------------------------------------------------------
+    public void syncMusicaSegunConfiguracion() {
+        if (muerteEnCurso) return;
 
-        // Música (no duplica si vuelves desde pausa)
+        if (enPausa) {
+            if (musicaNivel != null && musicaNivel.isPlaying()) {
+                musicaNivel.pause();
+            }
+            return;
+        }
+
+        boolean sonidoOn = Configuracion.isSonidoActivado();
+
+        if (!sonidoOn) {
+            pararMusicaNivel();
+            return;
+        }
+
         if (musicaNivel == null) {
             musicaNivel = Gdx.audio.newMusic(Gdx.files.internal("audio/nivel1.mp3"));
             musicaNivel.setLooping(true);
@@ -390,6 +435,16 @@ public class PantallaJuego extends ScreenAdapter {
         } else if (!musicaNivel.isPlaying()) {
             musicaNivel.play();
         }
+    }
+
+    public void setEnPausa(boolean value) {
+        this.enPausa = value;
+    }
+
+    @Override
+    public void show() {
+
+        syncMusicaSegunConfiguracion();
 
         if (inicializado) return;
         inicializado = true;
@@ -397,6 +452,27 @@ public class PantallaJuego extends ScreenAdapter {
         camara = new OrthographicCamera();
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
+
+        // ------------------------------------------------------------
+        // ✅ Detectar móvil y activar controles táctiles automáticamente
+        // ------------------------------------------------------------
+        esMovil = (Gdx.app.getType() == com.badlogic.gdx.Application.ApplicationType.Android)
+            || (Gdx.app.getType() == com.badlogic.gdx.Application.ApplicationType.iOS);
+
+        // ✅ NUEVO: viewport de controles en coordenadas de pantalla
+        if (esMovil) {
+            controlesCam = new OrthographicCamera();
+            controlesViewport = new ScreenViewport(controlesCam);
+            controlesViewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
+
+            controles = new ControlesTactiles(controlesViewport);
+            Gdx.input.setInputProcessor(controles);
+
+            prevSaltarTouch = false;
+            prevDispararTouch = false;
+            prevEspecialTouch = false;
+            prevPausaTouch = false;
+        }
 
         anims = new PlayerAnimations();
         jugador = new Jugador(anims);
@@ -549,32 +625,64 @@ public class PantallaJuego extends ScreenAdapter {
         clampJugadorEnNivel();
 
         if (hud != null) hud.resize(width, height);
+
+        // ✅ NUEVO: actualizar viewport de controles
+        if (esMovil && controlesViewport != null) {
+            controlesViewport.update(width, height, true);
+        }
+        if (esMovil && controles != null) {
+            controles.recalcularLayout();
+        }
     }
 
     @Override
     public void render(float delta) {
 
-        // PAUSA
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.P)) {
+        syncMusicaSegunConfiguracion();
+
+        // ------------------------------------------------------------
+        // ✅ PAUSA: teclado en PC + botón pausa en móvil
+        // ------------------------------------------------------------
+        boolean pausaTouchJust = false;
+        if (esMovil && controles != null) {
+            boolean pausaNow = controles.isPausa();
+            pausaTouchJust = pausaNow && !prevPausaTouch;
+            prevPausaTouch = pausaNow;
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
+            || Gdx.input.isKeyJustPressed(Input.Keys.P)
+            || pausaTouchJust) {
+            enPausa = true;
+            pauseMusicaNivel();
             juego.setScreen(new PantallaPausa(juego, this));
             return;
         }
 
-        // TECLA 2: teleporta justo antes del trigger (para probar fade + transición)
         if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
             if (fadeEndX <= 0f) configurarTemplo();
 
             float playerW = jugador.getWidth(PPU);
-            float x = fadeEndX - playerW * 0.9f; // dentro de zona de fade, no en el borde
+            float x = fadeEndX - playerW * 0.9f;
             if (x < 0f) x = 0f;
             jugador.setX(x);
         }
 
-        // MUERTE -> PantallaMuerte (y parar música)
         if (jugador != null && (jugador.isDead() || jugador.getVida() <= 0)) {
-            pararMusicaNivel();
-            juego.setScreen(new PantallaMuerte(juego));
-            return;
+
+            if (!muerteEnCurso) {
+                muerteEnCurso = true;
+                tiempoMuerte = 0f;
+
+                pararMusicaNivel();
+            }
+
+            tiempoMuerte += delta;
+
+            if (tiempoMuerte >= DURACION_ANIM_DEAD) {
+                juego.setScreen(new PantallaMuerte(juego));
+                return;
+            }
         }
 
         if (!enPausa && !nivelTerminado) {
@@ -583,9 +691,17 @@ public class PantallaJuego extends ScreenAdapter {
 
         float h = jugador.getHeight(PPU);
 
+        // ------------------------------------------------------------
+        // ✅ INPUT: teclado en PC, táctil en móvil
+        // ------------------------------------------------------------
         float dir = 0f;
-        if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) dir -= 1f;
-        if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dir += 1f;
+
+        if (!esMovil) {
+            if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) dir -= 1f;
+            if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dir += 1f;
+        } else if (controles != null) {
+            dir = controles.getDirX();
+        }
 
         boolean saltar = Gdx.input.isKeyJustPressed(Input.Keys.W)
             || Gdx.input.isKeyJustPressed(Input.Keys.UP)
@@ -597,13 +713,34 @@ public class PantallaJuego extends ScreenAdapter {
         boolean disparaNormal = Gdx.input.isKeyJustPressed(Input.Keys.J);
         boolean disparaEspecial = Gdx.input.isKeyJustPressed(Input.Keys.K);
 
+        // ✅ Añadir táctil (justPressed) encima del teclado
+        if (esMovil && controles != null) {
+            boolean saltarNow = controles.isSaltar();
+            boolean dispararNow = controles.isDisparar();
+            boolean especialNow = controles.isEspecial();
+
+            boolean saltarJust = saltarNow && !prevSaltarTouch;
+            boolean dispararJust = dispararNow && !prevDispararTouch;
+            boolean especialJust = especialNow && !prevEspecialTouch;
+
+            prevSaltarTouch = saltarNow;
+            prevDispararTouch = dispararNow;
+            prevEspecialTouch = especialNow;
+
+            saltar = saltar || saltarJust;
+            disparaNormal = disparaNormal || dispararJust;
+            disparaEspecial = disparaEspecial || especialJust;
+
+            // ✅ FIX: AGACHARSE EN MÓVIL usando joystick hacia abajo
+            agacharse = agacharse || (controles.getDirY() < -0.55f);
+        }
+
         jugador.setSueloY(getSueloEntidadesY());
         jugador.aplicarEntrada(dir, saltar, agacharse, delta);
 
         clampJugadorEnNivel();
         actualizarAlphaEntradaTemplo();
 
-        // Transición SOLO pegado al margen derecho y ya invisible
         if (!nivelTerminado && alphaJugador <= 0.01f && jugador.getX() >= fadeEndX - 0.001f) {
             nivelTerminado = true;
             aplicarBonusTiempoSiProcede();
@@ -877,14 +1014,38 @@ public class PantallaJuego extends ScreenAdapter {
             hud.setScore(score);
             hud.setTiempoSeg(tiempoPartida);
             hud.draw(juego.batch);
+
+            // ✅ FIX REAL: dibujar controles con SU viewport de pantalla
+            if (esMovil && controles != null && controlesViewport != null) {
+                controlesViewport.apply();
+                juego.batch.setProjectionMatrix(controlesCam.combined);
+                controles.render(juego.batch);
+            }
+
             juego.batch.end();
         }
     }
 
     @Override
     public void hide() {
-        // al salir de la pantalla, cortar música del nivel
         pararMusicaNivel();
+    }
+
+    public void stopMusicaNivel() {
+        pararMusicaNivel();
+    }
+
+    public void pauseMusicaNivel() {
+        if (musicaNivel != null && musicaNivel.isPlaying()) musicaNivel.pause();
+    }
+
+    public void resumeMusicaNivel() {
+        if (!Configuracion.isSonidoActivado()) {
+            pararMusicaNivel();
+            return;
+        }
+        if (musicaNivel != null && !musicaNivel.isPlaying()) musicaNivel.play();
+        else if (musicaNivel == null) syncMusicaSegunConfiguracion();
     }
 
     @Override
@@ -912,6 +1073,9 @@ public class PantallaJuego extends ScreenAdapter {
         if (temploTex != null) temploTex.dispose();
 
         if (hud != null) hud.dispose();
+
+        // ✅ liberar controles táctiles
+        if (controles != null) controles.dispose();
 
         pararMusicaNivel();
     }
