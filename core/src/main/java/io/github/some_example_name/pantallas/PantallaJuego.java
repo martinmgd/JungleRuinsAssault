@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureWrap;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ObjectIntMap;
 import com.badlogic.gdx.utils.ObjectSet;
@@ -17,7 +18,6 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
-// ✅ NUEVO (solo para controles táctiles visibles)
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 
 import io.github.some_example_name.Main;
@@ -37,133 +37,176 @@ import io.github.some_example_name.utilidades.DisparoAssets;
 import io.github.some_example_name.utilidades.Hud;
 import io.github.some_example_name.utilidades.ImpactoAssets;
 import io.github.some_example_name.utilidades.ParallaxBackground;
+import io.github.some_example_name.utilidades.Records;
+import io.github.some_example_name.pantallas.PantallaNuevoRecord;
 import io.github.some_example_name.utilidades.VenenoAssets;
 
-// ✅ Controles táctiles (ruta según tu proyecto)
-import io.github.some_example_name.entidades.entidades.controles.ControlesTactiles;
+import io.github.some_example_name.entidades.controles.ControlesTactiles;
 
 public class PantallaJuego extends ScreenAdapter {
 
     // ------------------------------------------------------------
     // MÚSICA
     // ------------------------------------------------------------
+    // Música de fondo del nivel. Se gestiona en función de pausa/muerte y configuración de sonido.
     private Music musicaNivel;
 
+    // Flag para inicializar recursos una única vez cuando la pantalla se muestra por primera vez.
     private boolean inicializado = false;
+
+    // Referencia al juego principal para acceder a batch, cambiar pantallas, etc.
     private final Main juego;
 
+    // Cámara ortográfica del mundo del juego y su viewport asociado (mundo lógico escalado a pantalla).
     private OrthographicCamera camara;
     private Viewport viewport;
 
+    // Control de secuencia de muerte del jugador (animación + transición a pantallas finales).
     private boolean muerteEnCurso = false;
     private float tiempoMuerte = 0f;
 
-    // Ajusta esto al tiempo real de tu animación dead (ej: 1.0s, 1.2s, etc.)
+    // Duración total prevista de la animación "dead" antes de cambiar de pantalla.
     private static final float DURACION_ANIM_DEAD = 1.2f;
 
+    // Animaciones y entidad del jugador.
     private PlayerAnimations anims;
     private Jugador jugador;
 
+    // Ancho lógico total del nivel (en unidades del mundo).
     private float anchoNivel = 400f;
 
+    // Límites de seguimiento horizontal de la cámara (para no salir del nivel).
     private float limiteIzq;
     private float limiteDer;
 
+    // Pixels-Per-Unit para convertir dimensiones de texturas (px) a mundo (unidades).
     private static final float PPU = 64f;
 
+    // Fondo parallax y sus parámetros de escalado/posición.
     private ParallaxBackground parallax;
 
+    // Assets de disparo del jugador y gestor de proyectiles (normal/especial).
     private DisparoAssets disparoAssets;
     private GestorProyectiles gestorProyectiles;
 
+    // Assets de impactos/efectos y su gestor de reproducción.
     private ImpactoAssets impactoAssets;
     private GestorEfectos gestorEfectos;
 
+    // Gestor centralizado de enemigos y su configuración por tipo.
     private GestorEnemigos gestorEnemigos;
 
+    // Texturas de animaciones enemigas (serpiente).
     private Texture serpienteWalk;
     private Texture serpienteDeath;
 
+    // Texturas de animaciones enemigas (pájaro).
     private Texture pajaroAttak;
     private Texture pajaroDeath;
 
+    // Texturas de animaciones enemigas (golem).
     private Texture golemIdle;
     private Texture golemWalk;
     private Texture golemAttack;
     private Texture golemThrow;
     private Texture golemDeath;
 
+    // Proyectil del golem (roca) y región para dibujado.
     private Texture rocaTex;
     private TextureRegion rocaRegion;
 
+    // Assets relacionados con veneno (ataques de enemigos).
     private VenenoAssets venenoAssets;
 
+    // Color base para impactos normales (chispas/feedback visual al acertar).
     private final Color colorImpactoNormal = new Color(1f, 0.6f, 0.15f, 1f);
 
+    // Ajuste de suelo: fracción del alto de viewport donde se ubica el ground del parallax + offset final.
     private static final float GROUND_FRAC_FINAL = 0.45f;
     private static final float AJUSTE_SUELO_FINAL = -4.7f;
 
+    // Offset vertical aplicado al suelo real para alinear sprites/colisiones.
     private float ajusteSueloY = AJUSTE_SUELO_FINAL;
+
+    // Objetivo de Y del suelo (mantenido estable al redimensionar).
     private float sueloObjetivoY = 0f;
 
+    // Ajuste adicional para alinear entidades por encima del suelo (evitar que "pisen" dentro del ground).
     private static final float SUELO_ENTIDADES_UP_BASE = 0.90f;
 
     // ------------------------------------------------------------
     // TEMPLO
     // ------------------------------------------------------------
+    // Textura y región de la entrada de ruina/templo al final del nivel.
     private Texture temploTex;
     private TextureRegion temploRegion;
 
+    // Dimensiones escaladas del templo en unidades del mundo.
     private float temploW;
     private float temploH;
 
+    // Posición del templo en el mundo.
     private float temploX;
     private float temploY;
 
+    // Control de colocación: cuánto queda fuera por la derecha y fracción del alto del viewport ocupada.
     private static final float TEMPLO_OUT_RIGHT_FRAC = 0.20f;
     private static final float TEMPLO_VIEWPORT_H_FRAC = 0.72f;
 
+    // Rango X aproximado de la puerta (se usa como referencia/limitación).
     private float puertaX0;
     private float puertaX1;
 
+    // Límite de spawn/movimiento de enemigos hacia la derecha (para no invadir la zona del templo).
     private float limiteEnemigosDerecha;
 
+    // Alpha del jugador usado para efecto de "fade" al entrar en el templo (transición de nivel).
     private float alphaJugador = 1f;
 
-    // Trigger borde derecho (fade antes, transición al final)
+    // Trigger borde derecho: posiciones X donde comienza y termina el fade (antes de transición).
     private float fadeStartX;
     private float fadeEndX;
 
     // ------------------------------------------------------------
     // HUD + TIEMPO + PUNTUACIÓN
     // ------------------------------------------------------------
+    // HUD para vida, puntuación, tiempo y mensajes (bonus, etc.).
     private Hud hud;
+
+    // Puntuación acumulada del nivel.
     private int score = 0;
 
+    // Tiempo total de partida en segundos (solo avanza si no está en pausa ni terminado).
     private float tiempoPartida = 0f;
+
+    // Flags de estado del nivel.
     private boolean nivelTerminado = false;
     private boolean enPausa = false;
 
+    // Puntuación base por enemigo.
     private static final int PUNTOS_PAJARO = 50;
     private static final int PUNTOS_SERPIENTE = 100;
     private static final int PUNTOS_GOLEM = 200;
 
-    // Bonus por tiempo
+    // Bonus por tiempo: objetivo y máximo bonus posible.
     private static final float TIEMPO_OBJETIVO_SEG = 90f;
     private static final int BONUS_MAX_TIEMPO = 1000;
 
+    // Estado de cálculo del bonus para evitar aplicarlo múltiples veces.
     private boolean bonusTiempoAplicado = false;
     private int bonusTiempo = 0;
 
-    // Hits para matar
+    // Hits necesarios para matar cada enemigo (control de resistencia).
     private static final int HITS_PAJARO = 1;
     private static final int HITS_SERPIENTE = 3;
     private static final int HITS_GOLEM = 5;
 
+    // Contadores de impactos por entidad para cada tipo de enemigo.
     private final ObjectIntMap<Pajaro> hitsPajaro = new ObjectIntMap<>();
     private final ObjectIntMap<Serpiente> hitsSerpiente = new ObjectIntMap<>();
     private final ObjectIntMap<Golem> hitsGolem = new ObjectIntMap<>();
 
+    // Conjuntos para asegurar que cada enemigo puntúe una sola vez (evita sumar varias veces por estados/overlaps).
     private final ObjectSet<Pajaro> puntuadoPajaro = new ObjectSet<>();
     private final ObjectSet<Serpiente> puntuadoSerpiente = new ObjectSet<>();
     private final ObjectSet<Golem> puntuadoGolem = new ObjectSet<>();
@@ -171,38 +214,71 @@ public class PantallaJuego extends ScreenAdapter {
     // ------------------------------------------------------------
     // DROPS: corazón cada 10 enemigos
     // ------------------------------------------------------------
+    // Curación aplicada al recoger un corazón.
     private static final int VIDA_POR_CORAZON = 20;
+
+    // Contador global de enemigos derrotados (para determinar drop cada 10).
     private int enemigosMatados = 0;
 
+    // Región del sprite del corazón y lista de drops activos.
     private TextureRegion heartDropRegion;
     private final Array<HeartDrop> heartDrops = new Array<>();
+
+    // Hitbox temporal reutilizable del jugador para evitar allocs por frame.
     private final Rectangle hbJugadorTmp = new Rectangle();
 
     // ------------------------------------------------------------
-    // ✅ CONTROLES TÁCTILES (SOLO MÓVIL)
+    //  CONTROLES TÁCTILES (SOLO MÓVIL)
     // ------------------------------------------------------------
+    // Detección de plataforma móvil para activar controles táctiles.
     private boolean esMovil = false;
+
+    // Controlador de inputs táctiles (joystick/botones) del proyecto.
     private ControlesTactiles controles;
 
-    // ✅ NUEVO: viewport de controles en coordenadas de pantalla (para que se vean siempre)
+    // Viewport/cámara dedicados a UI táctil en coordenadas de pantalla (siempre visible, independiente del mundo).
     private Viewport controlesViewport;
     private OrthographicCamera controlesCam;
 
-    // Para detectar "justPressed" en botones táctiles
+    // Estados previos para implementar "justPressed" en botones táctiles (edge detection).
     private boolean prevSaltarTouch = false;
     private boolean prevDispararTouch = false;
     private boolean prevEspecialTouch = false;
     private boolean prevPausaTouch = false;
 
+    // ------------------------------------------------------------
+    //  BOTÓN EXTRA EN MÓVIL (usar boton_saltar.png como “ir a la entrada del boss”)
+    // - No toca ControlesTactiles
+    // - Se dibuja al lado del botón de pausa (zona superior derecha)
+    // - Al pulsarlo: hace lo mismo que NUM_2 (teleport a la entrada de la ruina/boss)
+    // ------------------------------------------------------------
+    // Textura del botón extra y su hitbox en el viewport de controles.
+    private Texture botonIrBossTex;
+    private final Rectangle hbBotonIrBoss = new Rectangle();
+
+    // Vector temporal para transformar coordenadas de toque (pantalla -> viewport UI).
+    private final Vector3 touchTmp = new Vector3();
+
+    // Tamaño/márgenes en píxeles de pantalla (viewport de controles).
+    private static final float IRBOSS_BTN_SIZE_PX = 62f;
+    private static final float IRBOSS_BTN_MARGIN_PX = 10f;
+    private static final float IRBOSS_BTN_GAP_PX = 10f; // separación respecto al borde superior derecho (y al de pausa)
+
+    // Drop simple con física vertical básica (gravedad) y recolección por hitbox.
     private static class HeartDrop {
+        // Posición y velocidad vertical.
         float x, y;
         float vy;
+
+        // Flags de estado (en suelo / marcado para eliminar).
         boolean enSuelo = false;
         boolean eliminar = false;
 
+        // Tamaño del sprite/hitbox en unidades de mundo.
         float w = 0.55f;
         float h = 0.55f;
 
+        // Y del suelo en el que debe detenerse.
         float sueloY;
 
         HeartDrop(float x, float y, float sueloY) {
@@ -212,6 +288,7 @@ public class PantallaJuego extends ScreenAdapter {
             this.vy = 0f;
         }
 
+        // Actualización simple: gravedad constante y colisión con "sueloY".
         void update(float delta) {
             if (eliminar) return;
 
@@ -227,6 +304,7 @@ public class PantallaJuego extends ScreenAdapter {
             }
         }
 
+        // Devuelve hitbox en "out" para reutilizar objeto y evitar GC.
         Rectangle getHitbox(Rectangle out) {
             out.set(x - w * 0.5f, y, w, h);
             return out;
@@ -234,18 +312,23 @@ public class PantallaJuego extends ScreenAdapter {
     }
 
     public PantallaJuego(Main juego) {
+        // Referencia persistente al juego para renderizar y realizar transiciones entre pantallas.
         this.juego = juego;
     }
 
+    // Configuración de textura para pixel-art: filtrado Nearest y wrap clamp (evita bleeding).
     private void setPixelArt(Texture t) {
         t.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         t.setWrap(TextureWrap.ClampToEdge, TextureWrap.ClampToEdge);
     }
 
+    // Y del suelo renderizable (ground del parallax + offset de ajuste).
     private float getSueloY() {
         return parallax.getGroundY() + ajusteSueloY;
     }
 
+    // Ajuste proporcional del "elevado" de entidades según el alto del viewport.
+    // Se recalcula para mantener coherencia visual al cambiar resoluciones.
     private float getSueloEntidadesUpWorld() {
         if (viewport == null) return SUELO_ENTIDADES_UP_BASE;
         float wh = viewport.getWorldHeight();
@@ -253,14 +336,17 @@ public class PantallaJuego extends ScreenAdapter {
         return SUELO_ENTIDADES_UP_BASE * (Constantes.ALTO_MUNDO / wh);
     }
 
+    // Y efectiva donde deben apoyar entidades (suelo base + separación adicional).
     private float getSueloEntidadesY() {
         return getSueloY() + getSueloEntidadesUpWorld();
     }
 
+    // Mantiene constante el objetivo de suelo al redimensionar: recalcula offset respecto al ground actual del parallax.
     private void recalcularAjusteSueloParaMantenerObjetivo() {
         ajusteSueloY = sueloObjetivoY - parallax.getGroundY();
     }
 
+    // Asegura que el jugador no salga del rango [0, anchoNivel - anchoJugador].
     private void clampJugadorEnNivel() {
         float playerW = jugador.getWidth(PPU);
 
@@ -276,6 +362,7 @@ public class PantallaJuego extends ScreenAdapter {
         jugador.setX(x);
     }
 
+    // Configura tamaño y posición del templo en función del viewport, además de definir límites y zonas de fade.
     private void configurarTemplo() {
         if (temploTex == null || jugador == null || viewport == null) return;
 
@@ -288,24 +375,28 @@ public class PantallaJuego extends ScreenAdapter {
         temploH = texH * scale;
         temploW = texW * scale;
 
+        // Coloca el templo cerca del final, dejando parte fuera por la derecha.
         temploX = anchoNivel - temploW * (1f - TEMPLO_OUT_RIGHT_FRAC);
 
-        // ✅ VALOR “BUENO” (el que ya tenías bien): anclado al suelo, NO alto
+        // Anclaje vertical al suelo (ajuste fino para alinear entrada con el ground).
         temploY = getSueloY() - 1.11f;
 
+        // Definición aproximada de zona de puerta (si se necesita para lógica adicional).
         puertaX0 = temploX + temploW * 0.47f;
         puertaX1 = temploX + temploW * 0.63f;
 
+        // Limita a los enemigos para no sobrepasar el templo por la derecha.
         limiteEnemigosDerecha = temploX;
         gestorEnemigos.setLimiteDerecha(limiteEnemigosDerecha);
 
-        // Fade al borde derecho real
+        // Cálculo de fade: final real coincide con borde derecho útil del nivel (según ancho del jugador).
         float playerW = jugador.getWidth(PPU);
         fadeEndX = anchoNivel - playerW;           // margen derecho real
         fadeStartX = fadeEndX - playerW * 1.2f;    // empieza antes
         if (fadeStartX < 0f) fadeStartX = 0f;
     }
 
+    // Calcula alpha del jugador según su X dentro del intervalo [fadeStartX, fadeEndX].
     private void actualizarAlphaEntradaTemplo() {
         float x = jugador.getX();
 
@@ -323,6 +414,7 @@ public class PantallaJuego extends ScreenAdapter {
         alphaJugador = 1f - t;
     }
 
+    // Aplica bonus por tiempo una única vez al finalizar el nivel (transición a sala del jefe).
     private void aplicarBonusTiempoSiProcede() {
         if (bonusTiempoAplicado) return;
 
@@ -338,6 +430,7 @@ public class PantallaJuego extends ScreenAdapter {
         if (hud != null) hud.showBonusTiempo(bonusTiempo);
     }
 
+    // Lógica de "kill event": incrementa contador y spawnea corazón cada 10 enemigos.
     private void onEnemyKilled(float x, float y) {
         enemigosMatados++;
 
@@ -348,10 +441,12 @@ public class PantallaJuego extends ScreenAdapter {
         }
     }
 
+    // Curación: se implementa reutilizando recibirDanio con valor negativo (según implementación del Jugador).
     private void curarJugador(int amount) {
         jugador.recibirDanio(-Math.abs(amount));
     }
 
+    // Actualiza drops, aplica gravedad y detecta recolección por solape de hitboxes.
     private void updateHeartDrops(float delta) {
         if (heartDrops.size == 0) return;
 
@@ -375,7 +470,7 @@ public class PantallaJuego extends ScreenAdapter {
             Rectangle hbD = d.getHitbox(hbDropTmp);
             if (hbD.overlaps(hbJugadorTmp)) {
 
-                // VIBRACIÓN CORTA AL RECOGER DROP
+                // Vibración breve al recoger un corazón (si está activada y el periférico existe).
                 if (Configuracion.isVibracionActivada() &&
                     Gdx.input.isPeripheralAvailable(com.badlogic.gdx.Input.Peripheral.Vibrator)) {
                     Gdx.input.vibrate(30);
@@ -388,6 +483,7 @@ public class PantallaJuego extends ScreenAdapter {
         }
     }
 
+    // Dibujo de drops activos usando la región del HUD.
     private void drawHeartDrops() {
         if (heartDrops.size == 0 || heartDropRegion == null) return;
 
@@ -399,6 +495,7 @@ public class PantallaJuego extends ScreenAdapter {
         }
     }
 
+    // Detiene y libera la música del nivel (recurso nativo), dejando el campo a null.
     private void pararMusicaNivel() {
         if (musicaNivel != null) {
             musicaNivel.stop();
@@ -408,8 +505,9 @@ public class PantallaJuego extends ScreenAdapter {
     }
 
     // ------------------------------------------------------------
-    // ✅ CONTROL AUDIO (SONIDO ON/OFF)
+    //  CONTROL AUDIO (SONIDO ON/OFF)
     // ------------------------------------------------------------
+    // Sincroniza la música con la configuración: respeta pausa y muerte, crea/reproduce/para según corresponda.
     public void syncMusicaSegunConfiguracion() {
         if (muerteEnCurso) return;
 
@@ -437,29 +535,84 @@ public class PantallaJuego extends ScreenAdapter {
         }
     }
 
+    // Setter de estado de pausa usado por pantallas externas (ej. PantallaPausa).
     public void setEnPausa(boolean value) {
         this.enPausa = value;
+    }
+
+    // Calcula y actualiza el rectángulo del botón extra "Ir Boss" en el viewport de controles.
+    private void recalcularBotonIrBossLayout() {
+        if (!esMovil || controlesViewport == null) return;
+
+        float sw = controlesViewport.getWorldWidth();
+        float sh = controlesViewport.getWorldHeight();
+
+        // Posición en esquina superior derecha con margen y separación.
+        float size = IRBOSS_BTN_SIZE_PX;
+        float x = sw - IRBOSS_BTN_MARGIN_PX - size - IRBOSS_BTN_GAP_PX - size;
+        float y = sh - IRBOSS_BTN_MARGIN_PX - size;
+
+        if (x < IRBOSS_BTN_MARGIN_PX) x = IRBOSS_BTN_MARGIN_PX;
+
+        hbBotonIrBoss.set(x, y, size, size);
+    }
+
+    // Teletransporta al jugador cerca del trigger final, equivalente funcional a NUM_2.
+    private void teleportToBossEntrance() {
+        if (fadeEndX <= 0f) configurarTemplo();
+
+        float playerW = jugador.getWidth(PPU);
+        float x = fadeEndX - playerW * 0.9f;
+        if (x < 0f) x = 0f;
+        jugador.setX(x);
+    }
+
+    // Detecta pulsación puntual sobre el botón extra en móvil (usando justTouched + hitbox UI).
+    private boolean botonIrBossJustPressed() {
+        if (!esMovil) return false;
+        if (controlesViewport == null) return false;
+        if (botonIrBossTex == null) return false;
+
+        if (!Gdx.input.justTouched()) return false;
+
+        touchTmp.set(Gdx.input.getX(), Gdx.input.getY(), 0f);
+        controlesViewport.unproject(touchTmp);
+
+        return hbBotonIrBoss.contains(touchTmp.x, touchTmp.y);
+    }
+
+    // Renderiza el botón extra usando el viewport de controles (coordenadas de pantalla).
+    private void drawBotonIrBoss() {
+        if (!esMovil) return;
+        if (botonIrBossTex == null) return;
+        if (controlesViewport == null || controlesCam == null) return;
+
+        controlesViewport.apply();
+        juego.batch.setProjectionMatrix(controlesCam.combined);
+
+        juego.batch.draw(botonIrBossTex, hbBotonIrBoss.x, hbBotonIrBoss.y, hbBotonIrBoss.width, hbBotonIrBoss.height);
     }
 
     @Override
     public void show() {
 
+        // Asegura que la música se alinea con la configuración al entrar a la pantalla.
         syncMusicaSegunConfiguracion();
 
+        // Evita reinicializaciones si show() se llama más de una vez.
         if (inicializado) return;
         inicializado = true;
 
+        // Configuración de cámara/viewport del mundo.
         camara = new OrthographicCamera();
         viewport = new ExtendViewport(Constantes.ANCHO_MUNDO, Constantes.ALTO_MUNDO, camara);
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
-        // ------------------------------------------------------------
-        // ✅ Detectar móvil y activar controles táctiles automáticamente
-        // ------------------------------------------------------------
+        // Detectar móvil y activar controles táctiles automáticamente.
         esMovil = (Gdx.app.getType() == com.badlogic.gdx.Application.ApplicationType.Android)
             || (Gdx.app.getType() == com.badlogic.gdx.Application.ApplicationType.iOS);
 
-        // ✅ NUEVO: viewport de controles en coordenadas de pantalla
+        // Viewport de controles en coordenadas de pantalla.
         if (esMovil) {
             controlesCam = new OrthographicCamera();
             controlesViewport = new ScreenViewport(controlesCam);
@@ -468,15 +621,23 @@ public class PantallaJuego extends ScreenAdapter {
             controles = new ControlesTactiles(controlesViewport);
             Gdx.input.setInputProcessor(controles);
 
+            // Reset de estados previos para detección de flancos (justPressed).
             prevSaltarTouch = false;
             prevDispararTouch = false;
             prevEspecialTouch = false;
             prevPausaTouch = false;
+
+            // Botón extra: usar boton_saltar.png para ir directo a la entrada del boss.
+            botonIrBossTex = new Texture("sprites/hud/controles/boton_saltar.png");
+            setPixelArt(botonIrBossTex);
+            recalcularBotonIrBossLayout();
         }
 
+        // Carga/instanciación de animaciones y jugador.
         anims = new PlayerAnimations();
         jugador = new Jugador(anims);
 
+        // Inicialización del fondo parallax y configuración de zoom/suelo.
         parallax = new ParallaxBackground(
             "sprites/fondos/capa_01.png",
             "sprites/fondos/capa_02.png",
@@ -488,26 +649,32 @@ public class PantallaJuego extends ScreenAdapter {
         parallax.setGroundFrac(GROUND_FRAC_FINAL);
         parallax.resize(viewport.getWorldWidth(), viewport.getWorldHeight());
 
+        // Fija objetivo de suelo para mantenerlo estable con resize.
         sueloObjetivoY = parallax.getGroundY() + AJUSTE_SUELO_FINAL;
         recalcularAjusteSueloParaMantenerObjetivo();
 
+        // Assets y gestor de proyectiles del jugador.
         disparoAssets = new DisparoAssets();
         gestorProyectiles = new GestorProyectiles(disparoAssets);
 
+        // Assets y gestor de efectos visuales (impactos).
         impactoAssets = new ImpactoAssets();
         gestorEfectos = new GestorEfectos(impactoAssets.impacto);
         gestorEfectos.setImpactoConfig(0.55f, 0.55f, 0.14f);
 
+        // Carga de texturas de enemigos (serpiente) y configuración pixel art.
         serpienteWalk = new Texture("sprites/enemigos/serpiente/serpiente_walk.png");
         serpienteDeath = new Texture("sprites/enemigos/serpiente/serpiente_death.png");
         setPixelArt(serpienteWalk);
         setPixelArt(serpienteDeath);
 
+        // Carga de texturas de enemigos (pájaro) y configuración pixel art.
         pajaroAttak = new Texture("sprites/enemigos/pajaro/pajaro_attack.png");
         pajaroDeath = new Texture("sprites/enemigos/pajaro/pajaro_dead.png");
         setPixelArt(pajaroAttak);
         setPixelArt(pajaroDeath);
 
+        // Carga de texturas de enemigos (golem) y configuración pixel art.
         golemIdle = new Texture("sprites/enemigos/golem/idle_sheet.png");
         golemWalk = new Texture("sprites/enemigos/golem/walk_sheet.png");
         golemThrow = new Texture("sprites/enemigos/golem/throw_sheet.png");
@@ -520,29 +687,36 @@ public class PantallaJuego extends ScreenAdapter {
         setPixelArt(golemAttack);
         setPixelArt(golemDeath);
 
+        // Textura/región de roca para proyectiles del golem.
         rocaTex = new Texture("sprites/proyectiles/enemigo/golem_roca.png");
         setPixelArt(rocaTex);
         rocaRegion = new TextureRegion(rocaTex);
 
+        // Gestor de enemigos con texturas base y configuración específica por tipo.
         gestorEnemigos = new GestorEnemigos(serpienteWalk, serpienteDeath, pajaroAttak, pajaroDeath, PPU);
         gestorEnemigos.setGolemTextures(golemIdle, golemWalk, golemThrow, golemAttack, golemDeath);
         gestorEnemigos.setRocaRegion(rocaRegion);
 
+        // Límites de cámara basados en el ancho visible del viewport.
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
 
+        // Posicionamiento inicial de cámara centrada en el viewport.
         camara.position.set(viewW / 2f, viewport.getWorldHeight() / 2f, 0f);
         camara.update();
 
+        // Posición inicial del jugador en el centro visible y alineado al suelo de entidades.
         jugador.setX(viewW / 2f);
         jugador.setSueloY(getSueloEntidadesY());
         jugador.setY(getSueloEntidadesY());
 
+        // Carga del templo final y configuración pixel art.
         temploTex = new Texture("sprites/fondos/entradaRuina.png");
         setPixelArt(temploTex);
         temploRegion = new TextureRegion(temploTex);
 
+        // Configuración general de enemigos: suelo, animación, stats, y spawn según dificultad.
         gestorEnemigos.setYsuelo(getSueloEntidadesY());
         gestorEnemigos.setAnimacion(128, 80, 0.20f);
         gestorEnemigos.setStats(2.0f, 10);
@@ -554,28 +728,35 @@ public class PantallaJuego extends ScreenAdapter {
             gestorEnemigos.setSpawnConfig(2.2f, 6, 2f, anchoNivel - 2f, 2.5f);
         }
 
+        // Ajuste vertical global para spawns/render de enemigos.
         gestorEnemigos.setYOffsetWorld(0.15f);
 
+        // Configuración específica de pájaros: altura top basada en viewport + offsets.
         float yTopPantalla = getSueloEntidadesY() + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(2.4f, 2, yTopPantalla, 0.8f, 12.0f, 12, 0.60f);
 
+        // Assets de veneno y configuración de ataques.
         venenoAssets = new VenenoAssets();
         gestorEnemigos.setVenenoRegion(venenoAssets.veneno);
 
         gestorEnemigos.setAtaques(12, 0.9f, 8, 1.8f);
         gestorEnemigos.setVenenoConfig(2.2f, 7.5f, 10.0f, 0.35f, 0.35f);
 
+        // Configuración de templo y clamps iniciales de jugador.
         configurarTemplo();
         clampJugadorEnNivel();
 
+        // Inicialización del HUD y sincronización de valores iniciales.
         hud = new Hud();
         hud.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         hud.setVida(jugador.getVida());
         hud.setScore(score);
         hud.setTiempoSeg(tiempoPartida);
 
+        // Región del corazón reutilizada para drops.
         heartDropRegion = hud.getHeartFullRegion();
 
+        // Reset explícito de estado de partida.
         score = 0;
         tiempoPartida = 0f;
         nivelTerminado = false;
@@ -584,6 +765,7 @@ public class PantallaJuego extends ScreenAdapter {
         bonusTiempoAplicado = false;
         bonusTiempo = 0;
 
+        // Limpieza de contadores/sets de hits y puntuación por enemigo.
         hitsPajaro.clear();
         hitsSerpiente.clear();
         hitsGolem.clear();
@@ -591,14 +773,17 @@ public class PantallaJuego extends ScreenAdapter {
         puntuadoSerpiente.clear();
         puntuadoGolem.clear();
 
+        // Reset de drops y contador de kills.
         enemigosMatados = 0;
         heartDrops.clear();
     }
 
     @Override
     public void resize(int width, int height) {
+        // Captura de suelo anterior para mantener posición relativa del jugador tras cambios de tamaño.
         float sueloAntes = (parallax != null) ? getSueloEntidadesY() : 0f;
 
+        // Actualiza viewport del mundo y recalcula parallax y ajuste de suelo.
         viewport.update(width, height, true);
 
         if (parallax != null) {
@@ -606,43 +791,55 @@ public class PantallaJuego extends ScreenAdapter {
             recalcularAjusteSueloParaMantenerObjetivo();
         }
 
+        // Recalcula límites de cámara según nuevo ancho visible.
         float viewW = viewport.getWorldWidth();
         limiteIzq = viewW / 2f;
         limiteDer = anchoNivel - viewW / 2f;
 
+        // Ajusta Y del jugador para conservar separación respecto al suelo.
         float sueloDespues = getSueloEntidadesY();
         float deltaSuelo = sueloDespues - sueloAntes;
 
         jugador.setSueloY(sueloDespues);
         jugador.setY(jugador.getY() + deltaSuelo);
 
+        // Actualiza suelo de enemigos y su configuración de pájaro dependiente del alto.
         gestorEnemigos.setYsuelo(sueloDespues);
 
         float yTopPantalla = sueloDespues + viewport.getWorldHeight() + 0.5f;
         gestorEnemigos.setPajaroConfig(2.4f, 2, yTopPantalla, 0.8f, 12.0f, 12, 0.60f);
 
+        // Reconfigura templo y clamps del jugador con el nuevo viewport.
         configurarTemplo();
         clampJugadorEnNivel();
 
+        // Redimensiona HUD.
         if (hud != null) hud.resize(width, height);
 
-        // ✅ NUEVO: actualizar viewport de controles
+        // Actualizar viewport de controles.
         if (esMovil && controlesViewport != null) {
             controlesViewport.update(width, height, true);
         }
         if (esMovil && controles != null) {
             controles.recalcularLayout();
         }
+
+        // Recalcular posición del botón extra.
+        if (esMovil) {
+            recalcularBotonIrBossLayout();
+        }
     }
 
     @Override
     public void render(float delta) {
 
+        // Mantiene la música en el estado correcto según configuración/pausa/muerte.
         syncMusicaSegunConfiguracion();
 
         // ------------------------------------------------------------
-        // ✅ PAUSA: teclado en PC + botón pausa en móvil
+        //  PAUSA: teclado en PC + botón pausa en móvil
         // ------------------------------------------------------------
+        // Detección de pulsación puntual del botón de pausa en móvil (flanco).
         boolean pausaTouchJust = false;
         if (esMovil && controles != null) {
             boolean pausaNow = controles.isPausa();
@@ -650,6 +847,7 @@ public class PantallaJuego extends ScreenAdapter {
             prevPausaTouch = pausaNow;
         }
 
+        // Entrada de pausa: ESC/P en teclado o botón táctil.
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
             || Gdx.input.isKeyJustPressed(Input.Keys.P)
             || pausaTouchJust) {
@@ -659,6 +857,12 @@ public class PantallaJuego extends ScreenAdapter {
             return;
         }
 
+        // Móvil: botón “ir al boss” (usa boton_saltar.png) hace lo mismo que NUM_2.
+        if (esMovil && botonIrBossJustPressed()) {
+            teleportToBossEntrance();
+        }
+
+        // Atajo teclado: teletransporta al jugador a la zona de entrada del boss (útil para test).
         if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
             if (fadeEndX <= 0f) configurarTemplo();
 
@@ -668,6 +872,7 @@ public class PantallaJuego extends ScreenAdapter {
             jugador.setX(x);
         }
 
+        // Gestión de muerte: inicia secuencia, detiene música y transiciona tras animación.
         if (jugador != null && (jugador.isDead() || jugador.getVida() <= 0)) {
 
             if (!muerteEnCurso) {
@@ -680,22 +885,45 @@ public class PantallaJuego extends ScreenAdapter {
             tiempoMuerte += delta;
 
             if (tiempoMuerte >= DURACION_ANIM_DEAD) {
-                juego.setScreen(new PantallaMuerte(juego));
+
+                if (Records.qualifies(score)) {
+                    juego.setScreen(
+                        new PantallaNuevoRecord(
+                            juego,
+                            score,
+                            PantallaNuevoRecord.Destino.MUERTE
+                        )
+                    );
+                } else {
+                    juego.setScreen(new PantallaMuerte(juego));
+                }
+
+                dispose();
                 return;
+            }
+
+        } else {
+            // Si se hubiera activado muerteEnCurso y el jugador ya no está muerto, se resetea el estado.
+            if (muerteEnCurso) {
+                muerteEnCurso = false;
+                tiempoMuerte = 0f;
             }
         }
 
+        // Contador de tiempo solo activo si no está en pausa y el nivel no terminó.
         if (!enPausa && !nivelTerminado) {
             tiempoPartida += delta;
         }
 
+        // Altura del jugador en mundo (usada para offsets de disparo).
         float h = jugador.getHeight(PPU);
 
         // ------------------------------------------------------------
-        // ✅ INPUT: teclado en PC, táctil en móvil
+        //  INPUT: teclado en PC, táctil en móvil
         // ------------------------------------------------------------
         float dir = 0f;
 
+        // Movimiento horizontal por teclado o joystick táctil.
         if (!esMovil) {
             if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) dir -= 1f;
             if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dir += 1f;
@@ -703,17 +931,20 @@ public class PantallaJuego extends ScreenAdapter {
             dir = controles.getDirX();
         }
 
+        // Saltar por teclado (justPressed) en desktop.
         boolean saltar = Gdx.input.isKeyJustPressed(Input.Keys.W)
             || Gdx.input.isKeyJustPressed(Input.Keys.UP)
             || Gdx.input.isKeyJustPressed(Input.Keys.SPACE);
 
+        // Agacharse por teclado (pressed) en desktop.
         boolean agacharse = Gdx.input.isKeyPressed(Input.Keys.S)
             || Gdx.input.isKeyPressed(Input.Keys.DOWN);
 
+        // Disparo normal y especial por teclado (justPressed).
         boolean disparaNormal = Gdx.input.isKeyJustPressed(Input.Keys.J);
         boolean disparaEspecial = Gdx.input.isKeyJustPressed(Input.Keys.K);
 
-        // ✅ Añadir táctil (justPressed) encima del teclado
+        // Añadir táctil (justPressed) encima del teclado.
         if (esMovil && controles != null) {
             boolean saltarNow = controles.isSaltar();
             boolean dispararNow = controles.isDisparar();
@@ -727,33 +958,39 @@ public class PantallaJuego extends ScreenAdapter {
             prevDispararTouch = dispararNow;
             prevEspecialTouch = especialNow;
 
+            // Se combinan inputs: si cualquiera dispara/salta, se considera true.
             saltar = saltar || saltarJust;
             disparaNormal = disparaNormal || dispararJust;
             disparaEspecial = disparaEspecial || especialJust;
 
-            // ✅ FIX: AGACHARSE EN MÓVIL usando joystick hacia abajo
+            // Agacharse en móvil usando joystick hacia abajo.
             agacharse = agacharse || (controles.getDirY() < -0.55f);
         }
 
+        // Aplica suelo actual y entrada del jugador (movimiento/salto/agachado).
         jugador.setSueloY(getSueloEntidadesY());
         jugador.aplicarEntrada(dir, saltar, agacharse, delta);
 
+        // Clamps y actualización de alpha según entrada al templo.
         clampJugadorEnNivel();
         actualizarAlphaEntradaTemplo();
 
+        // Condición de fin de nivel: jugador completamente "faded" y situado en el extremo final.
         if (!nivelTerminado && alphaJugador <= 0.01f && jugador.getX() >= fadeEndX - 0.001f) {
             nivelTerminado = true;
             aplicarBonusTiempoSiProcede();
 
             pararMusicaNivel();
 
-            juego.setScreen(new PantallaSalaJefe(juego, jugador));
+            juego.setScreen(new PantallaSalaJefe(juego, jugador, score));
             return;
         }
 
+        // Mantiene a enemigos alineados con el suelo actual y con límite derecho actualizado.
         gestorEnemigos.setYsuelo(getSueloEntidadesY());
         gestorEnemigos.setLimiteDerecha(limiteEnemigosDerecha);
 
+        // Lógica de disparo: calcula origen y offsets según postura (standing/crouch) y tipo de disparo.
         if (disparaNormal || disparaEspecial) {
 
             boolean derechaDisparo = jugador.isMirandoDerecha();
@@ -783,20 +1020,25 @@ public class PantallaJuego extends ScreenAdapter {
             }
         }
 
+        // Limpieza de pantalla.
         ScreenUtils.clear(0f, 0f, 0f, 1f);
 
+        // Aplica viewport del mundo antes de renderizar escena.
         viewport.apply();
 
+        // Seguimiento horizontal de cámara al jugador, clamped a límites del nivel.
         float objetivoX = jugador.getX() + (PlayerAnimations.FRAME_W / PPU) / 2f;
         camara.position.x = Math.max(limiteIzq, Math.min(objetivoX, limiteDer));
         camara.update();
 
         juego.batch.setProjectionMatrix(camara.combined);
 
+        // Cálculo de extremos visibles para actualizaciones/dibujo acotados por cámara.
         float cameraLeftX = camara.position.x - viewport.getWorldWidth() / 2f;
         float viewW = viewport.getWorldWidth();
         float rightX = cameraLeftX + viewW;
 
+        // Actualización de proyectiles, enemigos, ataques, efectos y drops.
         gestorProyectiles.update(delta, cameraLeftX, viewW);
         gestorEnemigos.update(delta);
 
@@ -812,7 +1054,7 @@ public class PantallaJuego extends ScreenAdapter {
         // COLISIONES DISPAROS NORMALES + SCORE + CHISPITA
         // ------------------------------------------------------------
 
-        // SERPIENTE
+        // SERPIENTE: procesa impactos de proyectiles normales, aplica conteo de hits, muerte, puntuación y efecto.
         for (Serpiente s : gestorEnemigos.getSerpientes()) {
             if (s.isDead()) continue;
             if (s.isDying()) continue;
@@ -850,7 +1092,7 @@ public class PantallaJuego extends ScreenAdapter {
             }
         }
 
-        // PÁJARO
+        // PÁJARO: similar, pero con hitbox dependiente de PPU y hits normalmente 1.
         for (Pajaro b : gestorEnemigos.getPajaros()) {
             if (b.isDead()) continue;
 
@@ -887,7 +1129,7 @@ public class PantallaJuego extends ScreenAdapter {
             }
         }
 
-        // GOLEM
+        // GOLEM: requiere múltiples hits antes de morir y puntuar.
         for (Golem g : gestorEnemigos.getGolems()) {
             if (g.isDead()) continue;
 
@@ -927,6 +1169,7 @@ public class PantallaJuego extends ScreenAdapter {
         // ------------------------------------------------------------
         // ATAQUE ESPECIAL: DAÑO + PUNTOS + KILLS
         // ------------------------------------------------------------
+        // Ataque especial (rayo): aplica daño por solape con hitbox del rayo y puntúa en transiciones (dying/dead).
         AtaqueEspecial esp = gestorProyectiles.getEspecial();
         if (esp != null) {
             Rectangle hbRayo = esp.getHitbox();
@@ -985,18 +1228,23 @@ public class PantallaJuego extends ScreenAdapter {
         // ------------------------------------------------------------
         juego.batch.begin();
 
+        // Render del parallax en función de la cámara y el ancho visible.
         parallax.render(juego.batch, cameraLeftX, viewW);
 
+        // Dibujo condicional del templo si entra en el rango visible (culling simple).
         if (temploX + temploW > cameraLeftX - 2f && temploX < rightX + 2f) {
             juego.batch.draw(temploRegion, temploX, temploY, temploW, temploH);
         }
 
+        // Drops de corazón.
         drawHeartDrops();
 
+        // Render de proyectiles, enemigos y efectos.
         gestorProyectiles.draw(juego.batch, cameraLeftX, viewW);
         gestorEnemigos.render(juego.batch, cameraLeftX, viewW);
         gestorEfectos.draw(juego.batch);
 
+        // Preserva color del batch, aplica alpha al jugador y restaura.
         float pr = juego.batch.getColor().r;
         float pg = juego.batch.getColor().g;
         float pb = juego.batch.getColor().b;
@@ -1008,6 +1256,7 @@ public class PantallaJuego extends ScreenAdapter {
 
         juego.batch.end();
 
+        // HUD + controles táctiles (en viewport de pantalla) se dibujan al final.
         if (hud != null) {
             juego.batch.begin();
             hud.setVida(jugador.getVida());
@@ -1015,10 +1264,14 @@ public class PantallaJuego extends ScreenAdapter {
             hud.setTiempoSeg(tiempoPartida);
             hud.draw(juego.batch);
 
-            // ✅ FIX REAL: dibujar controles con SU viewport de pantalla
+            // Dibujar controles con su viewport de pantalla.
             if (esMovil && controles != null && controlesViewport != null) {
                 controlesViewport.apply();
                 juego.batch.setProjectionMatrix(controlesCam.combined);
+
+                // Botón extra (al lado del de pausa).
+                drawBotonIrBoss();
+
                 controles.render(juego.batch);
             }
 
@@ -1028,17 +1281,21 @@ public class PantallaJuego extends ScreenAdapter {
 
     @Override
     public void hide() {
+        // Al ocultar la pantalla, detiene y libera música (evita que siga sonando en otras pantallas).
         pararMusicaNivel();
     }
 
+    // Método público para detener la música del nivel desde fuera.
     public void stopMusicaNivel() {
         pararMusicaNivel();
     }
 
+    // Pausa la música si está reproduciéndose.
     public void pauseMusicaNivel() {
         if (musicaNivel != null && musicaNivel.isPlaying()) musicaNivel.pause();
     }
 
+    // Reanuda música si corresponde según configuración, recreándola si fuera necesario.
     public void resumeMusicaNivel() {
         if (!Configuracion.isSonidoActivado()) {
             pararMusicaNivel();
@@ -1050,6 +1307,7 @@ public class PantallaJuego extends ScreenAdapter {
 
     @Override
     public void dispose() {
+        // Liberación de recursos (texturas, assets y HUD) para evitar fugas de memoria nativa.
         if (anims != null) anims.dispose();
         if (parallax != null) parallax.dispose();
         if (disparoAssets != null) disparoAssets.dispose();
@@ -1074,9 +1332,13 @@ public class PantallaJuego extends ScreenAdapter {
 
         if (hud != null) hud.dispose();
 
-        // ✅ liberar controles táctiles
+        // Liberar controles táctiles.
         if (controles != null) controles.dispose();
 
+        // Liberar botón extra.
+        if (botonIrBossTex != null) botonIrBossTex.dispose();
+
+        // Garantiza que la música queda detenida y liberada.
         pararMusicaNivel();
     }
 }

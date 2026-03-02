@@ -10,9 +10,11 @@ import com.badlogic.gdx.utils.Array;
 
 public class PlayerAnimations {
 
+    // Tamaño de cada frame dentro de los sheets del jugador (en píxeles).
     public static final int FRAME_W = 128;
     public static final int FRAME_H = 160;
 
+    // Rutas de los sheets de animación para los distintos estados del jugador.
     private static final String IDLE_SHEET = "sprites/player/idle/idle_sheet.png";
     private static final String WALK_SHEET = "sprites/player/walk/walk_sheet.png";
     private static final String CROUCH_SHEET = "sprites/player/crouch/crouch_sheet.png";
@@ -23,6 +25,7 @@ public class PlayerAnimations {
     private static final String DEAD_2_SHEET = "sprites/player/dead/dead_sheet_2.png";
     private static final String DEAD_3_SHEET = "sprites/player/dead/dead_sheet_3.png";
 
+    // Duración por frame (segundos) para cada animación.
     private static final float IDLE_FRAME_TIME = 0.25f;
     private static final float WALK_FRAME_TIME = 0.06f;
     private static final float CROUCH_FRAME_TIME = 0.20f;
@@ -31,6 +34,7 @@ public class PlayerAnimations {
 
     private static final float DEAD_FRAME_TIME = 0.07f;
 
+    // Texturas base cargadas desde disco para cada sheet.
     private final Texture idleTex;
     private final Texture walkTex;
     private final Texture crouchTex;
@@ -40,6 +44,7 @@ public class PlayerAnimations {
     private final Texture dead2Tex;
     private final Texture dead3Tex;
 
+    // Animaciones públicas para ser consumidas por la lógica del jugador/render.
     public final Animation<TextureRegion> idle;
     public final Animation<TextureRegion> walk;
     public final Animation<TextureRegion> crouch;
@@ -51,6 +56,7 @@ public class PlayerAnimations {
     public final Animation<TextureRegion> dead3;
 
     public PlayerAnimations() {
+        // Carga obligatoria de sheets base. Si falta alguno, se aborta con excepción.
         idleTex = loadTexMust(IDLE_SHEET);
         walkTex = loadTexMust(WALK_SHEET);
         crouchTex = loadTexMust(CROUCH_SHEET);
@@ -61,31 +67,37 @@ public class PlayerAnimations {
         dead2Tex = loadTexMust(DEAD_2_SHEET);
         dead3Tex = loadTexMust(DEAD_3_SHEET);
 
+        // Construcción de animaciones a partir de la primera fila del sheet.
         idle = buildRowAnimation(idleTex, IDLE_FRAME_TIME, true);
         walk = buildRowAnimation(walkTex, WALK_FRAME_TIME, true);
         crouch = buildRowAnimation(crouchTex, CROUCH_FRAME_TIME, true);
 
+        // La animación de salto se reproduce una sola vez (no en loop).
         jump = buildRowAnimation(jumpTex, JUMP_FRAME_TIME, false);
 
-        // ✅ CAMBIO MÍNIMO: la muerte NO debe estar en loop para poder encadenar 1->2->3
+        // Las animaciones de muerte se reproducen en modo NORMAL para permitir encadenado entre fases.
         dead1 = buildRowAnimation(dead1Tex, DEAD_FRAME_TIME, false);
         dead2 = buildRowAnimation(dead2Tex, DEAD_FRAME_TIME, false);
         dead3 = buildRowAnimation(dead3Tex, DEAD_FRAME_TIME, false);
     }
 
     private Texture loadTexMust(String path) {
+        // Localiza el archivo en el directorio interno de assets.
         FileHandle fh = Gdx.files.internal(path);
         Gdx.app.log("ASSETS", "Buscando: " + path + " -> exists=" + fh.exists());
 
+        // Falla de forma explícita si el recurso no está disponible.
         if (!fh.exists()) {
             throw new RuntimeException("NO EXISTE asset: " + path +
                 " (revisa la carpeta assets/ y la ruta exacta)");
         }
 
+        // Carga la textura y configura filtrado para conservar nitidez en pixel-art.
         Texture t = new Texture(fh);
         t.setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
         Gdx.app.log("ASSETS", "Cargado " + path + " size=" + t.getWidth() + "x" + t.getHeight());
 
+        // Valida que el sheet sea múltiplo exacto del tamaño de frame esperado.
         if (t.getWidth() % FRAME_W != 0 || t.getHeight() % FRAME_H != 0) {
             throw new RuntimeException(
                 "El sheet " + path + " (" + t.getWidth() + "x" + t.getHeight() + ") no es múltiplo de " +
@@ -97,12 +109,17 @@ public class PlayerAnimations {
     }
 
     private Animation<TextureRegion> buildRowAnimation(Texture tex, float frameTime, boolean loop) {
+        // Determina columnas a partir del ancho del sheet y del ancho de frame.
         int cols = tex.getWidth() / FRAME_W;
+
+        // Divide el sheet en una cuadrícula de regiones (filas x columnas).
         TextureRegion[][] grid = TextureRegion.split(tex, FRAME_W, FRAME_H);
 
+        // Extrae la primera fila completa como secuencia de frames.
         Array<TextureRegion> frames = new Array<>(cols);
         for (int c = 0; c < cols; c++) frames.add(grid[0][c]);
 
+        // Construye la animación y define su modo de reproducción.
         Animation<TextureRegion> anim = new Animation<>(frameTime, frames);
         anim.setPlayMode(loop ? Animation.PlayMode.LOOP : Animation.PlayMode.NORMAL);
 
@@ -111,6 +128,7 @@ public class PlayerAnimations {
     }
 
     public void dispose() {
+        // Libera todas las texturas asociadas a las animaciones del jugador.
         idleTex.dispose();
         walkTex.dispose();
         crouchTex.dispose();
